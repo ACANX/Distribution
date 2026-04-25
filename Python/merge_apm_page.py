@@ -24,7 +24,7 @@ def merge_json_files():
     ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
     
     with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(merged_data, f, ensure_ascii=False, indent=2)
+        json.dump(merged_data, f, ensure_ascii=False)
     
     print(f"Merged {len(json_files)} files into {output_file}")
     return output_file
