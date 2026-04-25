@@ -1,1 +1,0 @@
-[{"type": "api", "method": "GET", "path": "/API/V1/Meta/CMS/Sys/RBAC/RolePermission", "status_code": 200, "response_time_ms": 42, "ts": 1776693631730, "session": "b40c0e5a-1c3f-495d-bd0f-73ebbf8d005e", "uid": "agent", "uin": 100001}]

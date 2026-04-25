@@ -1,1 +1,0 @@
-[{"type": "api", "method": "GET", "path": "/API/V1/Meta/Schedule/Exec/Page?pn=1&ps=20&timeScheduleBegin=2026-02-22+15%3A47%3A00&timeScheduleEnd=2026-05-22+15%3A47%3A00", "status_code": 200, "response_time_ms": 2103, "ts": 1776844081829, "session": "66ea2bae-7c5d-40b5-bb99-5419b4b18e77", "uid": "agent", "uin": 100001}]
