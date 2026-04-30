@@ -1,0 +1,1 @@
+[{"type": "api", "method": "GET", "path": "/API/V1/Meta/DevOps/RDB/SpecField/Exists/security_name", "status_code": 500, "response_time_ms": 104, "ts": 1777539700571, "session": "89fecf21-ea17-4c60-bad1-5b2063e495ca", "uid": "agent", "uin": 100001}]
