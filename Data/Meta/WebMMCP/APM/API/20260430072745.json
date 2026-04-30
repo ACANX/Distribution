@@ -1,0 +1,1 @@
+[{"type": "api", "method": "POST", "path": "/API/V1/Meta/Schedule/Exec/Cancel?idn=109", "status_code": 200, "response_time_ms": 43, "ts": 1777534057814, "session": "398ed5c8-3d76-4026-8a6b-bb5a3b2a45f6", "uid": "agent", "uin": 100001}]
