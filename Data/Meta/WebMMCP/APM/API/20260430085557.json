@@ -1,0 +1,1 @@
+[{"type": "api", "method": "GET", "path": "/API/V1/Meta/CMS/Sys/SpecField/DetailPage", "status_code": 200, "response_time_ms": 123, "ts": 1777539355062, "session": "7a4614b4-5be5-4656-80fe-5358490c39a8", "uid": "agent", "uin": 100001}]
