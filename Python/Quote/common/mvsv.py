@@ -106,7 +106,7 @@ def _ensure_datetime_cols(rows, now_bjt):
 _DT_FIELD = "ts|Date|Time|c|v|t|r|cp"
 _DT_FIELD_CN = "ts|Date|Time|c|v|t|r|cp"
 _DT_NAME = "时间戳(UTC)|日期|时间|收盘价|成交量|成交额|涨跌幅(%)|涨跌值"
-_DT_NAME_EN = "Timestamp(UTC)|Date|Time|Close|Volume|Turnover|ChangePercent|ChangePrice"
+_DT_NAME_EN = "Ts|Date|Time|Close|Volume|Turnover|ChangePercent|ChangePrice"
 _DT_TYPE = "int|int|int|float|int|float|str|float"
 
 
