@@ -181,13 +181,15 @@ def serialize(data: MVSVData, path: str):
 
 
 def merge_and_dedup(existing, incoming, *, now_bjt):
+    existing.rows, ex_dt = _ensure_datetime_cols(existing.rows, now_bjt)
+    incoming.rows, in_dt = _ensure_datetime_cols(incoming.rows, now_bjt)
+    dt_added = ex_dt or in_dt
     rows_dict = {}
     for r in existing.rows:
         rows_dict[r[0]] = r
     for r in incoming.rows:
         rows_dict[r[0]] = r
     sorted_rows = sorted(rows_dict.values(), key=lambda r: int(r[0]))
-    sorted_rows, dt_added = _ensure_datetime_cols(sorted_rows, now_bjt)
     inc = incoming.metadata
     ex = existing.metadata
     md = MVSVMetadata()
