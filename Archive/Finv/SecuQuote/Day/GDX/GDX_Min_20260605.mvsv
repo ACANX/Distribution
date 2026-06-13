@@ -4,7 +4,7 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|收盘价|成交量|成交额|涨跌幅(%)|涨跌值"
 # 字段类型 : "int|int|int|float|int|float|str|float"
 # 计数 : 149
-# 采集时间 : "2026-06-13 16:06:46"
+# 采集时间 : "2026-06-13 16:08:46"
 # 证券代码 : GDX
 # 市场 : usd
 # 备注 : "汇总: c=86400|h=83600|l=73715|cnt=1950"
@@ -14,7 +14,7 @@
 # FieldName : "Ts|Date|Time|Close|Volume|Turnover|ChangePercent|ChangePrice"
 # FieldType : "int|int|int|float|int|float|str|float"
 # Count : 149
-# FetchTime : "2026-06-13 16:06:46"
+# FetchTime : "2026-06-13 16:08:46"
 # SecuCode : GDX
 # Market : usd
 
