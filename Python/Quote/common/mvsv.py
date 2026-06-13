@@ -131,11 +131,17 @@ def _expand_to_11cols(data):
         return data
 
     def _calc_open(close_str, cp_str):
+        from decimal import Decimal
+        close_d = Decimal(close_str)
+        cp_d = Decimal(cp_str)
+        result = close_d - cp_d
         prec = max(
-            len(close_str.split(".")[1]) if "." in close_str else 0,
-            len(cp_str.split(".")[1]) if "." in cp_str else 0,
+            -close_d.as_tuple().exponent if close_d.as_tuple().exponent < 0 else 0,
+            -cp_d.as_tuple().exponent if cp_d.as_tuple().exponent < 0 else 0,
         )
-        return format(float(close_str) - float(cp_str), f".{prec}f")
+        if prec:
+            result = result.quantize(Decimal('0.' + '0' * prec))
+        return str(result)
 
     new_rows = []
     prev_close = None
