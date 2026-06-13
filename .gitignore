@@ -4,6 +4,10 @@
 # Log file
 *.log
 
+# Python compiled cache
+__pycache__/
+*.pyc
+
 # BlueJ files
 *.ctxt
 
