@@ -32,7 +32,7 @@ jobs:
       - name: Run Task02ArchiveDaily
         env:
           QUOTE_CODES: ${{ github.event.inputs.codes }}
-        run: python Python/Quote/Task2ArchiveDaily.py
+        run: python Python/Quote/Task02ArchiveDaily.py
       - name: VerifyCleanPush
         run: |
           git log origin/quote..HEAD --oneline | (! read)
