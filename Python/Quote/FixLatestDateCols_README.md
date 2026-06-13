@@ -1,21 +1,16 @@
-# Latest.mvsv 列宽修复工具
+# FixLatestDateCols — Date/Time 列修复工具
 
 ## 用途
 
-修复 `Latest.mvsv` 中 6 列与 8 列行混排的数据不一致问题。
+修复 `Latest.mvsv` 及归档文件中 Date/Time 列相关的数据一致性问题。
 
-### 背景
+### 可修复的问题
 
-从旧版聚合（无 Date/Time 列）升级到新版后，部分 Latest.mvsv 存在列数不一致的记录：
-
-```
-# 正常 8 列行
-1780959540|20260609|065900|4320.15|0|0|0.23|10.12
-# 异常 6 列行（缺失 Date/Time）
-1780959660|4320|0|0|-0.00|-0.15
-```
-
-此工具自动扫描所有 Latest.mvsv，对 6 列的行按 ts（UTC 秒级时间戳）计算北京时间日期和时间，补全为 8 列。
+| 问题 | 示例 | 原因 |
+|---|---|---|
+| **6 列行（缺 Date/Time）** | `1780959660\|4320\|0\|0\|-0.00\|-0.15` | 旧版聚合产生的数据 |
+| **异常列宽（如 10 列）** | `...\|20260609\|065900\|20260609\|065900\|4320\|...` | 旧版去重逻辑未逐行检查，重复添加 Date/Time |
+| **元数据与数据不匹配** | `# 字段 : ts\|c\|v\|t\|r\|cp` 但数据有 8 列 | 数据已修复但元数据未更新 |
 
 ## 用法
 
@@ -33,19 +28,26 @@ git checkout quote
 
 ### 2. 运行修复
 
+**仅修复 Latest.mvsv（默认）：**
+
 ```bash
-python3 Python/Quote/RepairMixedCols.py
+python3 Python/Quote/FixLatestDateCols.py
+```
+
+**包括归档文件：**
+
+```bash
+python3 Python/Quote/FixLatestDateCols.py --all
 ```
 
 输出示例：
 
 ```
-PAXG: 修复 7517 行
-GDX: 修复 1950 行
-IAU: 修复 1950 行
-GCMain: 无需修复
+  ✅ GDX/Latest.mvsv: 修复 390 行
+  ✅ GLD/Latest.mvsv: 修复 390 行
+  ✅ IAU/Latest.mvsv: 修复 390 行
 
-完成: 共修复 11417 行
+完成: 检查 20 个文件，修复 3 个文件共 1170 行
 ```
 
 ### 3. 查看变更
@@ -54,13 +56,13 @@ GCMain: 无需修复
 git status --short
 ```
 
-确认只有 `Latest.mvsv` 文件被修改。
+确认只有需要修复的文件被修改。
 
 ### 4. 提交并推送
 
 ```bash
-git add Data/Finv/SecuQuote/*/Latest.mvsv
-git commit -m "[quote] repair mixed column rows in Latest.mvsv"
+git add -A
+git commit -m "[quote] fix Date/Time column inconsistencies"
 git push origin quote
 ```
 
@@ -73,14 +75,15 @@ git push origin quote
 
 | 机制 | 说明 |
 |---|---|
-| **列数检测** | 只修复 6 列行，8 列行保持不变（幂等） |
+| **逐行检查** | 每行独立判断，正常行不改动 |
+| **修复后校验** | 自动检查修复后行列数一致、元数据匹配 |
 | **原子写** | tmp + rename，中断不产生半成品文件 |
-| **仅读 Latest** | 不修改原始采集文件、日归档、月归档 |
 
 ## 适用场景
 
 | 场景 | 说明 |
 |---|---|
-| 首次升级后 | 从旧版聚合升级到新版 Date/Time 格式后运行一次 |
+| 首次升级后 | 从旧版升级到新版 Date/Time 格式后运行一次 |
 | 版本回退后再升级 | 回退后重新升级时，存量数据需要修复 |
-| CI 检测到异常 | 可通过 GitHub Actions 手动触发此脚本 |
+| 日常巡检 | 定期运行 `--all` 检查归档文件完整性 |
+
