@@ -1,7 +1,7 @@
 ﻿#!/usr/bin/env python3
-"""Task 1: Aggregate to Latest.mvsv"""
+"""Task 1: Aggregate raw source files into Latest.mvsv (full range)"""
 import sys, os
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -15,47 +15,16 @@ from common.timeutil import ts_to_bjt_date, BJT, UTC
 TASK_NAME = 'task1'
 
 
-def archive_and_trim(base, code, config, log):
-    """Archive rows older than daily_archive_after_days, then trim oldest."""
-    now_utc = datetime.now(UTC)
-    cutoff = int((now_utc - timedelta(days=config.daily_archive_after_days)).timestamp())
-    archive_rows = [r for r in base.rows if int(r[0]) < cutoff]
-    keep_rows = [r for r in base.rows if int(r[0]) >= cutoff]
-    if not archive_rows:
-        return base
-    log.info(f'归档 {len(archive_rows)} 行，保留 {len(keep_rows)} 行')
-    by_date = {}
-    for r in archive_rows:
-        d = ts_to_bjt_date(int(r[0]))
-        by_date.setdefault(d, []).append(r)
-    archive_base = config.archive_dir / 'Day' / code
-    archive_base.mkdir(parents=True, exist_ok=True)
-    for d, rows in sorted(by_date.items()):
-        ds = d.strftime('%Y%m%d')
-        ap = archive_base / f'{code}_Min_{ds}.mvsv'
-        md = MVSVMetadata()
-        for k, v in base.metadata.values.items():
-            md.values[k] = v
-        md.extra = dict(base.metadata.extra)
-        day_data = MVSVData(metadata=md, rows=rows)
-        if ap.exists():
-            day_data = merge_and_dedup(parse(str(ap)), day_data, now_bjt=datetime.now(BJT))
-        serialize(day_data, str(ap))
-        log.info(f'日归档: {ap.name} ({len(rows)} 行)')
-        gitutil.add(str(ap), cwd=str(config.repo_root))
-    sha = gitutil.commit(f'[quote] archive daily for {code} ({len(by_date)} days)', cwd=str(config.repo_root))
-    if sha:
-        log.info(f'归档 commit: {sha}')
-    return MVSVData(metadata=base.metadata, rows=keep_rows)
-
-
 def cleanup_raw(source_files, latest_path, code, config, log):
-    """Remove raw files fully covered by Latest."""
+    """Remove raw files fully covered by Latest.
+    Logs detailed reason for any files that cannot be removed.
+    """
     latest = parse(str(latest_path))
     if not latest.rows:
         return
     mn, mx = int(latest.rows[0][0]), int(latest.rows[-1][0])
     removed = 0
+    kept = 0
     for sf in source_files:
         try:
             fd = parse(sf)
@@ -69,7 +38,11 @@ def cleanup_raw(source_files, latest_path, code, config, log):
             removed += 1
             log.info(f'清理: {Path(sf).name}')
         else:
-            log.warning(f'未覆盖保留: {Path(sf).name}')
+            kept += 1
+            log.warning(
+                f'{Path(sf).name} 未被清理，'
+                f'文件 ts 范围 [{fmn}, {fmx}] 未被 Latest [{mn}, {mx}] 完整覆盖'
+            )
     if removed:
         sha = gitutil.commit(f'[quote] cleanup raw for {code}', cwd=str(config.repo_root))
         if sha:
@@ -94,12 +67,9 @@ def process_code(code, config, log):
     for sf in source_files:
         fd = parse(sf)
         base = merge_and_dedup(base, fd, now_bjt=now_bjt)
-    log.info(f'合并: {before} -> {len(base.rows)} 行 (+{len(base.rows)-before})')
-    base = archive_and_trim(base, code, config, log)
-    cutoff_latest = int((datetime.now(UTC) - timedelta(days=config.latest_window_days)).timestamp())
-    base.rows = [r for r in base.rows if int(r[0]) >= cutoff_latest]
+    log.info(f'合并: {before} -> {len(base.rows)} 行')
     serialize(base, str(lp))
-    log.info(f'Latest: {len(base.rows)} 行')
+    log.info(f'Latest: {len(base.rows)} 行 (ts范围: {base.rows[0][0] if base.rows else "N/A"} ~ {base.rows[-1][0] if base.rows else "N/A"})')
     gitutil.add(str(lp), cwd=str(config.repo_root))
     sha = gitutil.commit(f'[quote] aggregate Latest for {code}', cwd=str(config.repo_root))
     if sha:
@@ -113,7 +83,7 @@ def main():
     config = load_config()
     log = setup_logger(TASK_NAME, str(config.log_dir), config.log_retention_days)
     log.info('=' * 50)
-    log.info(f'任务一: 聚合到 Latest ({config.data_dir})')
+    log.info(f'任务一: 聚合原始文件到 Latest（全量）')
     codes = config.codes or sorted(d.name for d in config.data_dir.iterdir() if d.is_dir())
     log.info(f'证券: {codes}')
     start = datetime.now()

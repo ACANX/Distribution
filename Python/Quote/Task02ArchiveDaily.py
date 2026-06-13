@@ -25,44 +25,62 @@ def process_code(code, config, log):
     if not latest.rows:
         log.info('Latest.mvsv 无数据')
         return
+
+    # ── 1. 归档超过 DailyArchiveAfterDays 的数据 ──
     cutoff = int((datetime.now(UTC) - timedelta(days=config.daily_archive_after_days)).timestamp())
     archive_candidates = [r for r in latest.rows if int(r[0]) < cutoff]
-    if not archive_candidates:
+    if archive_candidates:
+        log.info(f'待归档: {len(archive_candidates)} 行')
+        by_date = {}
+        for r in archive_candidates:
+            d = ts_to_bjt_date(int(r[0]))
+            by_date.setdefault(d, []).append(r)
+        archive_base = config.archive_dir / 'Day' / code
+        archive_base.mkdir(parents=True, exist_ok=True)
+        archived_dates = []
+        for d, rows in sorted(by_date.items()):
+            ds = d.strftime('%Y%m%d')
+            ap = archive_base / f'{code}_Min_{ds}.mvsv'
+            md = MVSVMetadata()
+            for k, v in latest.metadata.values.items():
+                md.values[k] = v
+            md.extra = dict(latest.metadata.extra)
+            day_data = MVSVData(metadata=md, rows=rows)
+            if ap.exists():
+                day_data = merge_and_dedup(parse(str(ap)), day_data, now_bjt=datetime.now(BJT))
+                log.info(f'归档合并: {ap.name} ({len(day_data.rows)} 行)')
+            serialize(day_data, str(ap))
+            log.info(f'写入: {ap.name} ({len(rows)} 行)')
+            gitutil.add(str(ap), cwd=str(config.repo_root))
+            archived_dates.append(ds)
+        commit_msg = f'[quote] archive daily for {code} ({len(archived_dates)} days)'
+        sha = gitutil.commit(commit_msg, cwd=str(config.repo_root))
+        if sha:
+            log.info(f'归档 commit: {sha}')
+        archive_ts = {int(r[0]) for r in archive_candidates}
+        latest.rows = [r for r in latest.rows if int(r[0]) not in archive_ts]
+    else:
         log.info('无需要归档的数据')
-        return
-    log.info(f'待归档: {len(archive_candidates)} 行')
-    by_date = {}
-    for r in archive_candidates:
-        d = ts_to_bjt_date(int(r[0]))
-        by_date.setdefault(d, []).append(r)
-    archive_base = config.archive_dir / 'Day' / code
-    archive_base.mkdir(parents=True, exist_ok=True)
-    archived_dates = []
-    for d, rows in sorted(by_date.items()):
-        ds = d.strftime('%Y%m%d')
-        ap = archive_base / f'{code}_Min_{ds}.mvsv'
-        md = MVSVMetadata()
-        for k, v in latest.metadata.values.items():
-            md.values[k] = v
-        md.extra = dict(latest.metadata.extra)
-        day_data = MVSVData(metadata=md, rows=rows)
-        if ap.exists():
-            day_data = merge_and_dedup(parse(str(ap)), day_data, now_bjt=datetime.now(BJT))
-            log.info(f'归档合并: {ap.name} ({len(day_data.rows)} 行)')
-        serialize(day_data, str(ap))
-        log.info(f'写入: {ap.name} ({len(rows)} 行)')
-        gitutil.add(str(ap), cwd=str(config.repo_root))
-        archived_dates.append(ds)
-    commit_msg = f'[quote] archive daily for {code} ({len(archived_dates)} days)'
-    sha = gitutil.commit(commit_msg, cwd=str(config.repo_root))
-    if sha:
-        log.info(f'归档 commit: {sha}')
-    archive_ts = {int(r[0]) for r in archive_candidates}
-    latest.rows = [r for r in latest.rows if int(r[0]) not in archive_ts]
+
+    # ── 2. 裁剪超过 LatestWindowDays 的数据 ──
+    before_trim = len(latest.rows)
+    cutoff_latest = int((datetime.now(UTC) - timedelta(days=config.latest_window_days)).timestamp())
+    latest.rows = [r for r in latest.rows if int(r[0]) >= cutoff_latest]
+    trimmed = before_trim - len(latest.rows)
+    if trimmed:
+        log.info(f'Latest 裁剪: {trimmed} 行（超过 {config.latest_window_days} 天）')
+    else:
+        log.info(f'Latest: {len(latest.rows)} 行，无需裁剪')
+
+    # ── 3. 写回 Latest.mvsv ──
     serialize(latest, str(latest_path))
-    log.info(f'Latest 裁剪: {len(latest.rows)} 行')
+    log.info(f'Latest 写回: {len(latest.rows)} 行')
     gitutil.add(str(latest_path), cwd=str(config.repo_root))
-    sha2 = gitutil.commit(f'[quote] trim archived from Latest for {code}', cwd=str(config.repo_root))
+    sha2 = gitutil.commit(
+        f'[quote] trim Latest for {code}'
+        f' (archive {len(archive_candidates)} rows, trim {trimmed} rows)',
+        cwd=str(config.repo_root),
+    )
     if sha2:
         log.info(f'裁剪 commit: {sha2}')
     gitutil.push_with_retry(retries=config.git_push_retries, cwd=str(config.repo_root))
