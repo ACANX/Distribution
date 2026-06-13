@@ -80,6 +80,52 @@ def _fmt_meta(key: str, value: str) -> str:
         return f'# {key} : "{value}"'
     return f"# {key} : {value}"
 
+def _ensure_datetime_cols(rows, now_bjt):
+    """Add Date/Time (BJT yyyyMMdd/HHmmss) after ts if not present.
+    Returns (new_rows, added) where added=True if columns were added.
+    """
+    if not rows:
+        return rows, False
+    ncol = len(rows[0])
+    if ncol >= 8:  # already has Date/Time
+        return rows, False
+    if ncol == 6:  # raw format: ts|c|v|t|r|cp
+        from common.timeutil import ts_to_bjt_dt
+        new_rows = []
+        for r in rows:
+            bjt_dt = ts_to_bjt_dt(int(r[0]))
+            new_rows.append([
+                r[0],
+                bjt_dt.strftime("%Y%m%d"),
+                bjt_dt.strftime("%H%M%S"),
+            ] + r[1:])
+        return new_rows, True
+    return rows, False
+
+
+_DT_FIELD = "ts|Date|Time|c|v|t|r|cp"
+_DT_FIELD_CN = "ts|Date|Time|c|v|t|r|cp"
+_DT_NAME = "时间戳(UTC)|日期|时间|收盘价|成交量|成交额|涨跌幅(%)|涨跌值"
+_DT_NAME_EN = "Timestamp(UTC)|Date|Time|Close|Volume|Turnover|ChangePercent|ChangePrice"
+_DT_TYPE = "int|int|int|float|int|float|str|float"
+
+
+def _update_meta_with_datetime(meta):
+    """Update field metadata to include Date/Time columns."""
+    if meta.get("字段") and "Date|Time" not in meta["字段"]:
+        meta["字段"] = _DT_FIELD_CN
+    if meta.get("Field") and "Date|Time" not in meta["Field"]:
+        meta["Field"] = _DT_FIELD
+    if meta.get("字段名称") and "时间" not in meta["字段名称"]:
+        meta["字段名称"] = _DT_NAME
+    if meta.get("FieldName") and "Date" not in meta["FieldName"]:
+        meta["FieldName"] = _DT_NAME_EN
+    if meta.get("字段类型") and len(meta["字段类型"].split("|")) == 6:
+        meta["字段类型"] = _DT_TYPE
+    if meta.get("FieldType") and len(meta["FieldType"].split("|")) == 6:
+        meta["FieldType"] = _DT_TYPE
+
+
 
 class MVSVData:
     def __init__(self, metadata=None, rows=None):
@@ -141,6 +187,7 @@ def merge_and_dedup(existing, incoming, *, now_bjt):
     for r in incoming.rows:
         rows_dict[r[0]] = r
     sorted_rows = sorted(rows_dict.values(), key=lambda r: int(r[0]))
+    sorted_rows, dt_added = _ensure_datetime_cols(sorted_rows, now_bjt)
     inc = incoming.metadata
     ex = existing.metadata
     md = MVSVMetadata()
@@ -176,6 +223,8 @@ def merge_and_dedup(existing, incoming, *, now_bjt):
     ft = now_bjt.strftime("%Y-%m-%d %H:%M:%S")
     md["采集时间"] = ft
     md["FetchTime"] = ft
+    if dt_added or len(sorted_rows[0]) >= 8:
+        _update_meta_with_datetime(md)
     md.extra = {**ex.extra, **inc.extra}
     return MVSVData(metadata=md, rows=sorted_rows)
 

@@ -86,9 +86,9 @@ QuoteArchiveMonth.yml # 任务三：按月归档
 ```
 # 标题 : "{title}"
 # 数据供应商 : {data_provider}
-# 字段 : ts|c|v|t|r|cp
-# 字段名称 : 时间戳(UTC)|收盘价|成交量|成交额|涨跌幅(%)|涨跌值
-# 字段类型 : int|float|int|float|str|float
+# 字段 : ts|Date|Time|c|v|t|r|cp
+# 字段名称 : 时间戳(UTC)|日期|时间|收盘价|成交量|成交额|涨跌幅(%)|涨跌值
+# 字段类型 : int|int|int|float|int|float|str|float
 # 计数 : {count}
 # 采集时间 : "{fetch_time}"
 # 证券代码 : {secu_code}
@@ -96,15 +96,15 @@ QuoteArchiveMonth.yml # 任务三：按月归档
 # 备注 : "{remark}"
 # Title : "{title_en}"
 # DataProvider : {data_provider_en}
-# Field : ts|c|v|t|r|cp
-# FieldName : Ts|Close|Volume|Turnover|ChangePercent|ChangePrice
-# FieldType : int|float|int|float|str|float
+# Field : ts|Date|Time|c|v|t|r|cp
+# FieldName : Ts|Date|Time|Close|Volume|Turnover|ChangePercent|ChangePrice
+# FieldType : int|int|int|float|int|float|str|float
 # Count : {count}
 # FetchTime : "{fetch_time}"
 # SecuCode : {secu_code}
 # Market : {market}
                             ← 空行
-{ts}|{c}|{v}|{t}|{r}|{cp}
+{ts}|{Date}|{Time}|{c}|{v}|{t}|{r}|{cp}
 {ts}|...
 ```
 
@@ -114,7 +114,7 @@ QuoteArchiveMonth.yml # 任务三：按月归档
 - **数据行无表头**，字段信息全部由元数据区 `# 字段 : ...` 承载。
 - 元数据区 `# 键 : 值`；字符串值用双引号包裹，数值不加引号；中英双语并存（`标题`/`Title`、`字段`/`Field`、`字段名称`/`FieldName`、`字段类型`/`FieldType`、`计数`/`Count`、`备注`/`Remark`、`采集时间`/`FetchTime`、`证券代码`/`SecuCode`、`市场`/`Market`）。
 - **首列 `ts`（小写）**：UTC 秒级整数时间戳，作为全局去重键；`# 字段类型` 对应位置为 `int`。解析时对字段名做大小写兼容，以应对未来字段重命名。
-- 实测字段集为 `ts|c|v|t|r|cp`（6 列）；实现时按 `# 字段` 元数据动态识别，不硬编码列数。
+- 实测字段集为 `ts|c|v|t|r|cp`（6 列）；聚合后的 Latest.mvsv 及归档文件扩展为 `ts|Date|Time|c|v|t|r|cp`（8 列），其中 Date/Time 由 ts 按北京时间（UTC+8）计算得出；实现时按 `# 字段` 元数据动态识别，不硬编码列数。
 - `采集时间`/`FetchTime` 为采集落盘时间（BJT），`证券代码`/`SecuCode` 与目录名一致，**均须通过 `MVSVMetadata.extra` 保留并在序列化时原样回写**。
 - **`市场`/`Market`**：取值 `cny` / `hkd` / `usd` / `crypto`，用于在月归档完备性校验时加载对应市场的节假日文件。现有 `Data/Finv/SecuQuote/` 下样本尚未包含该键，M2 阶段需批量补入；`timeutil` 在缺失时按"证券代码规则"兜底映射市场。
 - 编码 UTF-8，行末 `\n`。
