@@ -4,17 +4,17 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|收盘价|成交量|成交额|涨跌幅(%)|涨跌值"
 # 字段类型 : "int|int|int|float|int|float|str|float"
 # 计数 : 1205
-# 采集时间 : "2026-06-13 14:00:50"
+# 采集时间 : "2026-06-13 14:22:45"
 # 证券代码 : 161116
 # 市场 : cny
 # 备注 : "汇总: c=1648|h=1613|l=1513|cnt=1205"
 # Title : 161116 Minute Quote Data
 # DataProvider : FT
 # Field : "ts|Date|Time|c|v|t|r|cp"
-# FieldName : "Timestamp(UTC)|Date|Time|Close|Volume|Turnover|ChangePercent|ChangePrice"
+# FieldName : "Ts|Date|Time|Close|Volume|Turnover|ChangePercent|ChangePrice"
 # FieldType : "int|int|int|float|int|float|str|float"
 # Count : 1205
-# FetchTime : "2026-06-13 14:00:50"
+# FetchTime : "2026-06-13 14:22:45"
 # SecuCode : 161116
 # Market : cny
 
