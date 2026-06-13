@@ -142,7 +142,7 @@ def _expand_to_11cols(data):
             close = r[4]
             change_price = r[9]
             if prev_close is None:
-                r[3] = str(float(close) + float(change_price))
+                r[3] = str(float(close) - float(change_price))
             new_rows.append(r)
             prev_close = close
             prev_ts = ts
@@ -152,7 +152,7 @@ def _expand_to_11cols(data):
             if prev_close is not None and prev_ts is not None and (ts - prev_ts) == 60:
                 open_val = prev_close
             elif prev_close is None:
-                open_val = str(float(close) + float(r[7]))
+                open_val = str(float(close) - float(r[7]))
             else:
                 open_val = ""
         new_row = [
