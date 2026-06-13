@@ -1,20 +1,20 @@
-# 标题 : IAU 分钟级行情数据
+# 标题 : IAU Test
 # 数据供应商 : FT
 # 字段 : "ts|Date|Time|c|v|t|r|cp"
 # 字段名称 : "时间戳(UTC)|日期|时间|收盘价|成交量|成交额|涨跌幅(%)|涨跌值"
 # 字段类型 : "int|int|int|float|int|float|str|float"
 # 计数 : 241
-# 采集时间 : "2026-06-13 16:08:48"
+# 采集时间 : "2026-06-13 16:46:30"
 # 证券代码 : IAU
 # 市场 : usd
 # 备注 : "汇总: c=84280|h=82930|l=76220|cnt=1950"
-# Title : IAU Minute Quote Data
+# Title : IAU Test
 # DataProvider : FT
 # Field : "ts|Date|Time|c|v|t|r|cp"
 # FieldName : "Ts|Date|Time|Close|Volume|Turnover|ChangePercent|ChangePrice"
 # FieldType : "int|int|int|float|int|float|str|float"
 # Count : 241
-# FetchTime : "2026-06-13 16:08:48"
+# FetchTime : "2026-06-13 16:46:30"
 # SecuCode : IAU
 # Market : usd
 
