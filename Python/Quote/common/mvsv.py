@@ -120,27 +120,41 @@ def _ensure_datetime_cols(rows, now_bjt):
 
 def _expand_to_11cols(data):
     """Expand 8-col rows to 11-col: ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent.
-    Open = prev Close if ts diff == 60s, else ''. Low/High = '' (no upstream data).
-    Idempotent: 11-col rows pass through unchanged.
+    Open:
+      - First row: Close + ChangePrice
+      - Subsequent rows with ts diff == 60s: prev Close
+      - Otherwise: '' (gap in data)
+    Low/High = '' (no upstream data yet).
+    Idempotent for 11-col rows (only first-row Open is recalculated).
     """
     if not data.rows:
-        return data
-    first_n = len(data.rows[0])
-    if first_n == 11:
-        return data
-    if first_n != 8:
         return data
 
     new_rows = []
     prev_close = None
     prev_ts = None
+
     for r in data.rows:
-        ts = int(r[0])
-        close = r[3]
-        if prev_close is not None and prev_ts is not None and (ts - prev_ts) == 60:
-            open_val = prev_close
-        else:
-            open_val = ""
+        n = len(r)
+        if n == 11:
+            # Recalculate first-row Open when expanding to merge other data
+            ts = int(r[0])
+            close = r[4]
+            change_price = r[9]
+            if prev_close is None:
+                r[3] = str(float(close) + float(change_price))
+            new_rows.append(r)
+            prev_close = close
+            prev_ts = ts
+        elif n == 8:
+            ts = int(r[0])
+            close = r[3]
+            if prev_close is not None and prev_ts is not None and (ts - prev_ts) == 60:
+                open_val = prev_close
+            elif prev_close is None:
+                open_val = str(float(close) + float(r[7]))
+            else:
+                open_val = ""
         new_row = [
             r[0], r[1], r[2],
             open_val,          # Open
