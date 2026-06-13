@@ -103,7 +103,6 @@ def _ensure_datetime_cols(rows, now_bjt):
         else:
             new_rows.append(r)
     return new_rows, any_added
-    return rows, False
 
 
 _DT_FIELD = "ts|Date|Time|c|v|t|r|cp"
