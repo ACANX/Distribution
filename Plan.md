@@ -11,8 +11,8 @@
 | 符号 | 含义 |
 | --- | --- |
 | `Data/Finv/SecuQuote/{code}/` | 原始采集目录，包含最近 5 个交易日的 `*.mvsv` 采集文件 |
-| `Latest.mvsv` | 每个证券目录下聚合后的"最新两周"滚动文件 |
-| `Archive/Finv/SecuQuote/Day/{code}/{code}_Min_yyyyMMdd.mvsv` | 按日归档（UTC 时间戳按北京时间切日） |
+| `Latest.mvsv` | 每个证券目录下聚合后的 11 列滚动文件（`ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent`） |
+| `Archive/Finv/SecuQuote/Day/{code}/{code}_Min_yyyyMMdd.mvsv` | 按日归档，11 列格式（UTC 时间戳按北京时间切日） |
 | `Archive/Finv/SecuQuote/{yyyy}/{code}/{code}_Min_yyyyMM.mvsv` | 按月归档 |
 | `ts`（实测为小写，解析时大小写兼容） | 首列 UTC 秒级时间戳，全局唯一键 |
 | 阈值 | `Latest 保留 14 天`（`latest_window_days`）、`日归档触发 7 天`（`daily_archive_after_days`）、`月归档延迟窗口 +2 月`（`monthly_delete_lag_months`） |
@@ -59,21 +59,21 @@ Python/Quote/
 │       ├── hkd.csv          #   港股
 │       ├── usd.csv          #   美股 / 美期 / 外汇
 │       └── crypto.csv       #   加密货币
-├── Task1AggregateLatest.py
-├── Task2ArchiveDaily.py
-├── Task3ArchiveMonthly.py
+├── Task01AggregateLatest.py
+├── Task02ArchiveDaily.py
+├── Task03ArchiveMonthly.py
 └── README.md
 ```
 
 `.github/workflows/`：
 
 ```
-QuoteAggregate.yml     # 任务一：聚合到 Latest
-QuoteArchiveDay.yml   # 任务二：按日归档
-QuoteArchiveMonth.yml # 任务三：按月归档
+Quote01Aggregate.yml     # 任务一：聚合到 Latest
+Quote02ArchiveDay.yml   # 任务二：按日归档
+Quote03ArchiveMonth.yml # 任务三：按月归档
 ```
 
-三个 workflow 独立、可手动触发；共享 Python 代码与 `Config.yaml`。
+三个 workflow 独立、可手动触发；共享 Python 代码与 `Config.yaml`。Quote01Aggregate 额外支持 `push` 事件——当 `Data/Finv/SecuQuote/**/*.mvsv` 有变更（排除 Latest.mvsv）时自动触发。
 
 ---
 
@@ -86,9 +86,9 @@ QuoteArchiveMonth.yml # 任务三：按月归档
 ```
 # 标题 : "{title}"
 # 数据供应商 : {data_provider}
-# 字段 : ts|Date|Time|c|v|t|r|cp
-# 字段名称 : 时间戳(UTC)|日期|时间|收盘价|成交量|成交额|涨跌幅(%)|涨跌值
-# 字段类型 : int|int|int|float|int|float|str|float
+# 字段 : ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent
+# 字段名称 : 时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)
+# 字段类型 : int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str
 # 计数 : {count}
 # 采集时间 : "{fetch_time}"
 # 证券代码 : {secu_code}
@@ -96,15 +96,15 @@ QuoteArchiveMonth.yml # 任务三：按月归档
 # 备注 : "{remark}"
 # Title : "{title_en}"
 # DataProvider : {data_provider_en}
-# Field : ts|Date|Time|c|v|t|r|cp
-# FieldName : Ts|Date|Time|Close|Volume|Turnover|ChangePercent|ChangePrice
-# FieldType : int|int|int|float|int|float|str|float
+# Field : ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent
+# FieldName : Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent
+# FieldType : int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str
 # Count : {count}
 # FetchTime : "{fetch_time}"
 # SecuCode : {secu_code}
 # Market : {market}
                             ← 空行
-{ts}|{Date}|{Time}|{c}|{v}|{t}|{r}|{cp}
+{ts}|{Date}|{Time}|{Open}|{Close}|{Low}|{High}|{Volume}|{Turnover}|{ChangePrice}|{ChangePercent}
 {ts}|...
 ```
 
@@ -114,7 +114,7 @@ QuoteArchiveMonth.yml # 任务三：按月归档
 - **数据行无表头**，字段信息全部由元数据区 `# 字段 : ...` 承载。
 - 元数据区 `# 键 : 值`；字符串值用双引号包裹，数值不加引号；中英双语并存（`标题`/`Title`、`字段`/`Field`、`字段名称`/`FieldName`、`字段类型`/`FieldType`、`计数`/`Count`、`备注`/`Remark`、`采集时间`/`FetchTime`、`证券代码`/`SecuCode`、`市场`/`Market`）。
 - **首列 `ts`（小写）**：UTC 秒级整数时间戳，作为全局去重键；`# 字段类型` 对应位置为 `int`。解析时对字段名做大小写兼容，以应对未来字段重命名。
-- 实测字段集为 `ts|c|v|t|r|cp`（6 列）；聚合后的 Latest.mvsv 及归档文件扩展为 `ts|Date|Time|c|v|t|r|cp`（8 列），其中 Date/Time 由 ts 按北京时间（UTC+8）计算得出；实现时按 `# 字段` 元数据动态识别，不硬编码列数。
+- 实测字段集为 `ts|c|v|t|r|cp`（6 列）；聚合后的 Latest.mvsv 及归档文件扩展为 `ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent`（11 列），其中 Date/Time 由 ts 按北京时间（UTC+8）计算得出；实现时按 `# 字段` 元数据动态识别，不硬编码列数。
 - `采集时间`/`FetchTime` 为采集落盘时间（BJT），`证券代码`/`SecuCode` 与目录名一致，**均须通过 `MVSVMetadata.extra` 保留并在序列化时原样回写**。
 - **`市场`/`Market`**：取值 `cny` / `hkd` / `usd` / `crypto`，用于在月归档完备性校验时加载对应市场的节假日文件。现有 `Data/Finv/SecuQuote/` 下样本尚未包含该键，M2 阶段需批量补入；`timeutil` 在缺失时按"证券代码规则"兜底映射市场。
 - 编码 UTF-8，行末 `\n`。
@@ -123,10 +123,10 @@ QuoteArchiveMonth.yml # 任务三：按月归档
 
 ```python
 parse(path) -> MVSVData                                        # 元数据 + 数据行一次性读入；extra 自动收集非标准键
-serialize(data: MVSVData, path, *, append=False)               # 原子写（tmp+rename），append 模式追加；extra 原样回写
+serialize(data: MVSVData, path)               # 原子写（tmp+rename），append 模式追加；extra 原样回写
 merge_and_dedup(existing: MVSVData, incoming: MVSVData, *, now_bjt: datetime) -> MVSVData
                                                                # 同 ts 以 incoming 为准（"后采集覆盖"）；元数据按 4.3 合并
-scan_source_files(code_dir, Latest) -> list                    # 列出原始采集文件，跳过 Latest.mvsv
+scan_source_files(code_dir) -> list                    # 列出原始采集文件，跳过 Latest.mvsv
 ```
 
 **去重规则（关键）**：
@@ -173,16 +173,16 @@ last_complete_month(now_bjt) -> (start_ts, end_ts, yyyymm)
 
 ## 五、任务实现要点
 
-### 任务一：`Task1AggregateLatest.py`
+### 任务一：`Task01AggregateLatest.py`
 
 流程（对每个证券目录 `{code}`）：
 
 1. 扫描 `Data/Finv/SecuQuote/{code}/*.mvsv`（排除 `Latest.mvsv`），按 mtime 升序。
 2. 读取现有 `Latest.mvsv`（若存在）作为 base；若不存在则 base = 空 `MVSVData`。
 3. 逐个 fold 原始文件：`base = merge_and_dedup(base, file, now_bjt=now_bjt)`——**数据行按 ts 后采集覆盖，元数据按 4.3 规则合并**（`# 计数`、`# 采集时间` 在每次 fold 时都会以最新值重写）。
-4. **先归档**：调用与任务二共用的归档函数，将 `base` 中**超过 7 天**（`daily_archive_after_days`）的数据按北京时间切日归档到 `Archive/Finv/SecuQuote/Day/{code}/{code}_Min_yyyyMMdd.mvsv`；归档同样遵循任务二的"元数据按 4.3 合并、已存在则合并而非覆盖、按证券维度单次 commit"。归档 commit 成功后方可进入下一步。
-5. **再裁剪**：从 `base` 中剔除 `ts < now_utc - 14 days` 的行（`latest_window_days`）；裁剪后重写 `# 计数` / `# 采集时间`。
-6. 原子写回 `Latest.mvsv`（tmp + rename；若配置 append-only，则用 `append=True` 增量写入新增行）。
+4. **扩展为 11 列**：调用 _expand_to_11cols(base) 添加 Open/Low/High 列，将 `base` 中**超过 7 天**（`daily_archive_after_days`）的数据按北京时间切日归档到 `Archive/Finv/SecuQuote/Day/{code}/{code}_Min_yyyyMMdd.mvsv`；归档同样遵循任务二的"元数据按 4.3 合并、已存在则合并而非覆盖、按证券维度单次 commit"。归档 commit 成功后方可进入下一步。
+5. **清理原始采集文件**：对 ts 范围已被 Latest 完整覆盖的源文件执行 git rm（`latest_window_days`）；裁剪后重写 `# 计数` / `# 采集时间`。
+6. 原子写回 `Latest.mvsv`（tmp + rename 原子替换）。
 7. git add `Latest.mvsv` + commit + **按证券增量 push**；commit message 形如 `[quote] aggregate Latest for {code}`。
 8. **清理原始采集文件**（`cleanup_raw_after_aggregate=true`，已确认）：
    - 回读刚落盘的 `Latest.mvsv`，取其 `min(ts)/max(ts)`；
@@ -195,7 +195,7 @@ last_complete_month(now_bjt) -> (start_ts, end_ts, yyyymm)
 - 14 天外的数据仅在任务二确认日归档已写入并 git commit 后才从 Latest 中裁剪。
 - 原始采集文件仅在 Latest commit 成功、且 ts 范围校验通过后才删除；未通过的保留并告警，不做强删。
 
-### 任务二：`Task2ArchiveDaily.py`
+### 任务二：`Task02ArchiveDaily.py`
 
 流程：
 
@@ -208,13 +208,13 @@ last_complete_month(now_bjt) -> (start_ts, end_ts, yyyymm)
    - 若不存在：直接以 `new_rows` 构造 `MVSVData`，元数据从 `Latest.mvsv` 继承后重写 `# 计数` / `# 采集时间`；
    - 写回采用 tmp + rename 原子替换，按 `ts` 升序排序；
    - **不逐个 commit**，仅 `git add` 到暂存区，等待步骤 5 统一 commit。
-5. 同一证券的所有日期归档写完后，**一次性 `git commit`**，message 形如 `[quote] archive daily for {code} ({N} days)`；commit 成功后再从 `Latest.mvsv` 中裁剪已归档行并原子写回 + 再 commit（同一证券两次 commit：归档 + Latest 裁剪）。
+5. 同一证券的所有日期归档写完后，**一次性 git commit**，message 形如 `[quote] archive daily for {code} ({N} days)`；commit 成功后再从 `Latest.mvsv` 中裁剪已归档行并原子写回 + 再 commit（同一证券两次 commit：归档 + Latest 裁剪）。
 
 **删除前置校验**：
 - 对每个待归档日，写完后回读并校验归档文件的 `min(ts) / max(ts)` 覆盖 `Latest.mvsv` 中该日的 `min/max`。
 - 校验通过后才能进入 Latest 裁剪阶段。
 
-### 任务三：`Task3ArchiveMonthly.py`
+### 任务三：`Task03ArchiveMonthly.py`
 
 触发时机（已确认）：每月第三周的周一（北京时间 10:00），即 cron `0 2 15-21 * 1`，归档上一自然月的日数据。
 
@@ -271,7 +271,7 @@ last_complete_month(now_bjt) -> (start_ts, end_ts, yyyymm)
 三个 workflow 结构一致，差异在 `script`：
 
 ```yaml
-name: QuoteAggregate
+name: Quote01Aggregate
 on:
   workflow_dispatch:
     inputs:
@@ -290,7 +290,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with: { ref: quote, fetch-depth: 0 }
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
@@ -299,10 +299,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-      - name: Run Task1AggregateLatest
+      - name: Run Task01AggregateLatest
         env:
           QUOTE_CODES: ${{ github.event.inputs.codes }}
-        run: python Python/Quote/Task1AggregateLatest.py
+        run: python Python/Quote/Task01AggregateLatest.py
       - name: Verify clean push
         run: |
           # 脚本已内部完成增量 push；此处确认无漏 commit / 未 push 的本地分支
@@ -310,10 +310,10 @@ jobs:
           git status --short | (! read)
 ```
 
-- 脚本内部已通过 `common/gitutil.push_with_retry(ref='quote', retries=Config.git_push_retries)` 按证券增量 push，**workflow 不再集中 push**；末尾 `Verify clean push` 步骤仅作兜底校验。
+- 脚本内部已通过 `common/gitutil.push_with_retry(ref=None, retries=Config.git_push_retries)` 自动检测当前分支并增量 push，**workflow 不再集中 push**；末尾 `VerifyCleanPush` 步骤仅作兜底校验。
 - `QUOTE_CODES` 环境变量透传 `workflow_dispatch` 的 `codes` 入参，由 `common/config.py` 解析。
-- `QuoteArchiveDay.yml` 触发 `Task2ArchiveDaily.py`，schedule 与任务一错开 1 小时；**同样声明 `concurrency.group: quote-all`、同样保留 `workflow_dispatch.codes` 入参**。
-- `QuoteArchiveMonth.yml` 触发 `Task3ArchiveMonthly.py`，schedule `cron: '0 2 15-21 * 1'`（每月第三周的周一 10:00 BJT）；**同样声明 `concurrency.group: quote-all`、同样保留 `workflow_dispatch.codes` 入参**。
+- `Quote02ArchiveDay.yml` 触发 `Task02ArchiveDaily.py`，schedule 与任务一错开 1 小时；**同样声明 `concurrency.group: quote-all`、同样保留 `workflow_dispatch.codes` 入参**。
+- `Quote03ArchiveMonth.yml` 触发 `Task03ArchiveMonthly.py`，schedule `cron: '0 2 15-21 * 1'`（每月第三周的周一 10:00 BJT）；**同样声明 `concurrency.group: quote-all`、同样保留 `workflow_dispatch.codes` 入参**。
 - 本地运行模式：`git checkout quote` → `python Python/Quote/Task*.py` → 本地 `git log` 复核 → `git push origin quote`。
 
 ---
@@ -321,19 +321,19 @@ jobs:
 ## 九、配置（`Python/Quote/Config.yaml`）
 
 ```yaml
-repo_root: .                          # 参考点声明，固定为 "."；实际以 git 仓库根为基准
-data_rel: Data/Finv/SecuQuote
-archive_rel: Archive/Finv/SecuQuote
+RepoRoot: .                          # 参考点声明，固定为 "."；实际以 git 仓库根为基准
+DataRel: Data/Finv/SecuQuote
+ArchiveRel: Archive/Finv/SecuQuote
 codes: []                       # 空 = 自动发现全部证券目录
-latest_window_days: 14
-daily_archive_after_days: 7
-monthly_cron: '0 2 15-21 * 1'    # 每月第三周周一 10:00 BJT 触发上一自然月归档
-monthly_delete_lag_months: 2
-cleanup_raw_after_aggregate: true
-log_dir: Python/Quote/logs
-log_retention_days: 14            # 启动时自动清理早于 now - N days 的本地日志
-git_push_retries: 1               # push 失败后 pull --rebase 重试次数
-holidays_files:
+LatestWindowDays: 15
+DailyArchiveAfterDays: 10
+MonthlyCron: '0 2 15-21 * 1'    # 每月第三周周一 10:00 BJT 触发上一自然月归档
+MonthlyDeleteLagMonths: 2
+CleanupRawAfterAggregate: true
+LogDir: Python/Quote/logs
+LogRetentionDays: 14            # 启动时自动清理早于 now - N days 的本地日志
+GitPushRetries: 1               # push 失败后 pull --rebase 重试次数
+HolidaysFiles:
   cny: Python/Quote/common/holidays/cny.csv
   hkd: Python/Quote/common/holidays/hkd.csv
   usd: Python/Quote/common/holidays/usd.csv
@@ -381,18 +381,18 @@ Actions workflow 与本地运行均通过同一份 `requirements.txt` 安装依�
 |---|---|---|---|
 | M1 | 脚手架 & 配置加载 | `common/config.py`、`Config.yaml`、`logger.py` | 单测：配置优先级（文件 < 环境变量） |
 | M2 | mvsv 读写与合并核心 | `mvsv.py`、`timeutil.py` | 单测：去重顺序、覆盖方向、日切边界（UTC 16:00:00） |
-| M3 | 任务一脚本 | `Task1AggregateLatest.py` | 集成测试：多文件合并 → Latest；重复执行幂等 |
-| M4 | 任务二脚本 | `Task2ArchiveDaily.py` | 集成测试：跨日切点数据归属正确；已存在归档文件不丢失数据 |
-| M5 | 任务三脚本 | `Task3ArchiveMonthly.py` | 集成测试：月内日文件缺失时跳过；月归档存在时合并而非覆盖；删除闸门严格 |
+| M3 | 任务一脚本 | `Task01AggregateLatest.py` | 集成测试：多文件合并 → Latest；重复执行幂等 |
+| M4 | 任务二脚本 | `Task02ArchiveDaily.py` | 集成测试：跨日切点数据归属正确；已存在归档文件不丢失数据 |
+| M5 | 任务三脚本 | `Task03ArchiveMonthly.py` | 集成测试：月内日文件缺失时跳过；月归档存在时合并而非覆盖；删除闸门严格 |
 | M6 | git 工具与日志 | `gitutil.py` 完善 + 中文日志 | 集成测试：断点续跑不产生重复 commit |
-| M7 | GitHub Actions | 三个 workflow 文件 | 在 quote 分支手动 dispatch 各跑一次，验证产物与日志 |
-| M8 | 文档 & 示例数据 | `Python/Quote/README.md` + `tests/fixtures/` | README 覆盖触发方式、入参、日志查看路径 |
+| M7 | GitHub Actions | 三个 workflow 文件（Quote01/02/03） | 在 quote 分支手动 dispatch 各跑一次，验证产物与日志 |
+| M8 | 文档 & 示例数据 | `Python/Quote/mvsv.md`、`问题记录.md`、`FixLatestDateCols.py` 等 | mvsv.md 覆盖格式版本演进与函数使用说明 |
 
 建议节奏：M1–M2 用 1 个 PR 打底；M3–M5 每个任务一个 PR；M6–M8 收尾一个 PR。全部合入 quote 后再向 main 提 PR。
 
 ---
 
-## 十二、测试策略
+## 十二、测试策略（尚未实现）
 
 - **单元**（`pytest`，`Python/Quote/tests/`）：
   - `test_mvsv_merge_order`：验证"后采集覆盖"。
