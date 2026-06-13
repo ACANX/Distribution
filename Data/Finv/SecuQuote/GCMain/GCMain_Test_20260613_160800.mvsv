@@ -1,0 +1,19 @@
+# 标题 : "GCMain 分钟级行情数据"
+# 数据供应商 : FT
+# 字段 : ts|c|v|t|r|cp
+# 字段名称 : 时间戳(UTC)|收盘价|成交量|成交额|涨跌幅(%)|涨跌值
+# 字段类型 : int|float|int|float|str|float
+# 计数 : 2
+# 采集时间 : "2026-06-13 16:05:00"
+# 证券代码 : GCMain
+# Title : "GCMain Minute Quote Data"
+# DataProvider : FT
+# Field : ts|c|v|t|r|cp
+# FieldName : Ts|Close|Volume|Turnover|ChangePercent|ChangePrice
+# FieldType : int|float|int|float|str|float
+# Count : 2
+# FetchTime : "2026-06-13 16:05:00"
+# SecuCode : GCMain
+
+1781700000|4350.0|100|0|0.0|0.0
+1781700060|4351.0|200|0|0.02|1.0
