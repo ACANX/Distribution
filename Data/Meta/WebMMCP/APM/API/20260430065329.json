@@ -1,0 +1,1 @@
+[{"type": "api", "method": "GET", "path": "/API/V1/Meta/CMS/Auth/CurrentUser", "status_code": 200, "response_time_ms": 52, "ts": 1777531999825, "session": "bf4294e4-9818-42db-a41d-c226cb96dd79", "uid": "agent", "uin": 100001}]

@@ -1,0 +1,1 @@
+[{"type": "api", "method": "GET", "path": "/API/V1/Meta/CMS/Sys/RBAC/SysAuthority/10/1/", "status_code": 500, "response_time_ms": 65, "ts": 1777531988464, "session": "bf4294e4-9818-42db-a41d-c226cb96dd79", "uid": "agent", "uin": 100001}]

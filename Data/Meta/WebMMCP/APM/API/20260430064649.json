@@ -1,0 +1,1 @@
+[{"type": "api", "method": "GET", "path": "/API/V1/Meta/CMS/Base/Captcha/GetCode", "status_code": 200, "response_time_ms": 594, "ts": 1777531599983, "session": "08ad95ab-622d-48e7-bbf1-fb7fc7784f8a", "uid": null, "uin": null}]
