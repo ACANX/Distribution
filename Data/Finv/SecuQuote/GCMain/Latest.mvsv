@@ -1,6 +1,6 @@
 # 标题 : GCMain Trigger
 # 数据供应商 : FT
-# 字段 : "ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
+# 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|float|float|float|float|int|float|float|str"
 # 计数 : 6902
@@ -10,7 +10,7 @@
 # 备注 : "汇总: c=4353900|h=4381600|l=4047000|cnt=6900"
 # Title : GCMain Trigger
 # DataProvider : FT
-# Field : "ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
+# Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|float|float|float|float|int|float|float|str"
 # Count : 6902
