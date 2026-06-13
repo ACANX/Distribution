@@ -4,7 +4,7 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|收盘价|成交量|成交额|涨跌幅(%)|涨跌值"
 # 字段类型 : "int|int|int|float|int|float|str|float"
 # 计数 : 7195
-# 采集时间 : "2026-06-13 16:03:34"
+# 采集时间 : "2026-06-13 17:25:41"
 # 证券代码 : USDCNY
 # 市场 : usd
 # 备注 : "汇总: c=6765.5|h=6786.5|l=6760.5|cnt=7195"
@@ -14,7 +14,7 @@
 # FieldName : "Ts|Date|Time|Close|Volume|Turnover|ChangePercent|ChangePrice"
 # FieldType : "int|int|int|float|int|float|str|float"
 # Count : 7195
-# FetchTime : "2026-06-13 16:03:34"
+# FetchTime : "2026-06-13 17:25:41"
 # SecuCode : USDCNY
 # Market : usd
 
