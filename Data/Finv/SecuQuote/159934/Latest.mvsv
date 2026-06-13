@@ -4,17 +4,17 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|收盘价|成交量|成交额|涨跌幅(%)|涨跌值"
 # 字段类型 : "int|int|int|float|int|float|str|float"
 # 计数 : 1205
-# 采集时间 : "2026-06-13 14:00:39"
+# 采集时间 : "2026-06-13 14:22:43"
 # 证券代码 : 159934
 # 市场 : cny
 # 备注 : "汇总: c=9663|h=9450|l=8801|cnt=1205"
 # Title : 159934 Minute Quote Data
 # DataProvider : FT
 # Field : "ts|Date|Time|c|v|t|r|cp"
-# FieldName : "Timestamp(UTC)|Date|Time|Close|Volume|Turnover|ChangePercent|ChangePrice"
+# FieldName : "Ts|Date|Time|Close|Volume|Turnover|ChangePercent|ChangePrice"
 # FieldType : "int|int|int|float|int|float|str|float"
 # Count : 1205
-# FetchTime : "2026-06-13 14:00:39"
+# FetchTime : "2026-06-13 14:22:43"
 # SecuCode : 159934
 # Market : cny
 
