@@ -2,9 +2,9 @@
 # 数据供应商 : FT
 # 字段 : "ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
-# 字段类型 : "int|int|int|float|float|float|float|int|float|float|str"
+# 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 1205
-# 采集时间 : "2026-06-13 16:03:26"
+# 采集时间 : "2026-06-13 20:00:47"
 # 证券代码 : 159937
 # 市场 : cny
 # 备注 : "汇总: c=9226|h=9025|l=8403|cnt=1205"
@@ -12,9 +12,9 @@
 # DataProvider : FT
 # Field : "ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
-# FieldType : "int|int|int|float|float|float|float|int|float|float|str"
+# FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 1205
-# FetchTime : "2026-06-13 16:03:26"
+# FetchTime : "2026-06-13 20:00:47"
 # SecuCode : 159937
 # Market : cny
 
