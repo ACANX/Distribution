@@ -91,7 +91,7 @@ def process_code(code, config, start_ts, end_ts, month_str, log):
     serialize(base, str(mp))
     log.info(f'月归档: {mp.name} ({len(base.rows)} 行)')
     gitutil.add(str(mp), cwd=str(config.repo_root))
-    sha = gitutil.commit(f'[quote] archive monthly {month_str} for {code}', cwd=str(config.repo_root))
+    sha = gitutil.commit(f'[Quote] archive monthly {month_str} for {code}', cwd=str(config.repo_root))
     if sha:
         log.info(f'月归档 commit: {sha}')
     now_bjt_date = datetime.now(BJT)
