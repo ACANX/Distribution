@@ -84,6 +84,7 @@ def _ensure_datetime_cols(rows, now_bjt):
     """Normalize each row to exactly 8 columns (ts|Date|Time|c|v|t|r|cp).
     - 6 cols → insert Date/Time (BJT) after ts
     - 8 cols → unchanged
+    - 11 cols → unchanged (already expanded)
     - other → reconstruct: ts + Date/Time(BJT) + last 5 cols (c,v,t,r,cp)
     Returns (new_rows, added) where added=True if any row was modified.
     """
@@ -94,7 +95,7 @@ def _ensure_datetime_cols(rows, now_bjt):
     any_added = False
     for r in rows:
         n = len(r)
-        if n == 8:
+        if n == 8 or n == 11:
             new_rows.append(r)
         elif n == 6:
             bjt_dt = ts_to_bjt_dt(int(r[0]))
@@ -117,6 +118,67 @@ def _ensure_datetime_cols(rows, now_bjt):
     return new_rows, any_added
 
 
+def _expand_to_11cols(data):
+    """Expand 8-col rows to 11-col: ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent.
+    Open = prev Close if ts diff == 60s, else ''. Low/High = '' (no upstream data).
+    Idempotent: 11-col rows pass through unchanged.
+    """
+    if not data.rows:
+        return data
+    first_n = len(data.rows[0])
+    if first_n == 11:
+        return data
+    if first_n != 8:
+        return data
+
+    new_rows = []
+    prev_close = None
+    prev_ts = None
+    for r in data.rows:
+        ts = int(r[0])
+        close = r[3]
+        if prev_close is not None and prev_ts is not None and (ts - prev_ts) == 60:
+            open_val = prev_close
+        else:
+            open_val = ""
+        new_row = [
+            r[0], r[1], r[2],
+            open_val,          # Open
+            close,             # Close
+            "",                # Low
+            "",                # High
+            r[4],              # Volume
+            r[5],              # Turnover
+            r[7],              # ChangePrice
+            r[6],              # ChangePercent
+        ]
+        new_rows.append(new_row)
+        prev_close = close
+        prev_ts = ts
+
+    data.rows = new_rows
+    _set_meta_11cols(data.metadata)
+    return data
+
+
+_11_FIELD = "ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
+_11_FIELD_CN = _11_FIELD
+_11_NAME = "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
+_11_NAME_EN = "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
+_11_TYPE = "int|int|int|float|float|float|float|int|float|float|str"
+
+
+def _set_meta_11cols(meta):
+    """Set metadata to 11-column format."""
+    meta["字段"] = _11_FIELD_CN
+    meta["Field"] = _11_FIELD
+    meta["字段名称"] = _11_NAME
+    meta["FieldName"] = _11_NAME_EN
+    meta["字段类型"] = _11_TYPE
+    meta["FieldType"] = _11_TYPE
+
+
+# 8-column format constants (intermediate, with Date/Time)
 _DT_FIELD = "ts|Date|Time|c|v|t|r|cp"
 _DT_FIELD_CN = "ts|Date|Time|c|v|t|r|cp"
 _DT_NAME = "时间戳(UTC)|日期|时间|收盘价|成交量|成交额|涨跌幅(%)|涨跌值"
@@ -125,18 +187,18 @@ _DT_TYPE = "int|int|int|float|int|float|str|float"
 
 
 def _update_meta_with_datetime(meta):
-    """Update field metadata to include Date/Time columns."""
+    """Update 6-col metadata to 8-col (with Date/Time)."""
     if meta.get("字段") and "Date|Time" not in meta["字段"]:
         meta["字段"] = _DT_FIELD_CN
     if meta.get("Field") and "Date|Time" not in meta["Field"]:
         meta["Field"] = _DT_FIELD
-    if meta.get("字段名称") and len(meta["字段名称"].split("|")) == 6:
+    if meta.get("字段名称") and meta["字段名称"].count("|") + 1 == 6:
         meta["字段名称"] = _DT_NAME
-    if meta.get("FieldName") and len(meta["FieldName"].split("|")) == 6:
+    if meta.get("FieldName") and meta["FieldName"].count("|") + 1 == 6:
         meta["FieldName"] = _DT_NAME_EN
-    if meta.get("字段类型") and len(meta["字段类型"].split("|")) == 6:
+    if meta.get("字段类型") and meta["字段类型"].count("|") + 1 == 6:
         meta["字段类型"] = _DT_TYPE
-    if meta.get("FieldType") and len(meta["FieldType"].split("|")) == 6:
+    if meta.get("FieldType") and meta["FieldType"].count("|") + 1 == 6:
         meta["FieldType"] = _DT_TYPE
 
 

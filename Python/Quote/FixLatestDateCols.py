@@ -27,7 +27,7 @@ import sys, os, glob
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from common.mvsv import parse, serialize, MVSVData
+from common.mvsv import parse, serialize, MVSVData, _expand_to_11cols
 from common.timeutil import ts_to_bjt_dt, BJT
 from common.mvsv import _update_meta_with_datetime
 from datetime import datetime
@@ -81,13 +81,13 @@ def scan_patterns(base_dir: str, include_archives: bool) -> list:
     return sorted(set(files))
 
 
-def validate_after_fix(path: str, data: MVSVData):
+def validate_after_fix(path: str, data: MVSVData, expected_cols: set = {8}):
     """修复后校验：所有行列数一致"""
     col_counts = set(len(r) for r in data.rows)
     if len(col_counts) != 1:
         raise ValueError(f'修复后仍存在混合列宽: {col_counts}')
     n = col_counts.pop()
-    if n != 8:
+    if n not in expected_cols:
         raise ValueError(f'修复后列宽异常: {n}')
     field_def = data.metadata.get('字段', '')
     if field_def:
@@ -111,6 +111,7 @@ def main():
 
     for path in files:
         rel = os.path.relpath(path, base_dir)
+        is_latest = 'Latest.mvsv' in path
         try:
             data = parse(path)
             fixed = repair_rows(data)
@@ -120,8 +121,14 @@ def main():
                 print(f'  ✅ {rel}: 修复 {fixed} 行')
                 total_fixed += fixed
                 total_files += 1
-            else:
-                pass  # 正常文件不输出
+            # 将 Latest.mvsv 从 8 列扩展为 11 列（Open/Low/High）
+            if is_latest and data.rows and len(data.rows[0]) == 8:
+                _expand_to_11cols(data)
+                serialize(data, path)
+                validate_after_fix(path, data, {11})
+                print(f'  ↪ {rel}: 扩展为 11 列 (Open/Low/High)')
+                total_fixed += len(data.rows)
+                total_files += 1
         except Exception as e:
             print(f'  ❌ {rel}: {e}')
 

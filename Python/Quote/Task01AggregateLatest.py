@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from common.config import load_config
 from common.logger import setup_logger
-from common.mvsv import MVSVData, MVSVMetadata, parse, serialize, merge_and_dedup, scan_source_files
+from common.mvsv import MVSVData, MVSVMetadata, parse, serialize, merge_and_dedup, scan_source_files, _expand_to_11cols
 from common import gitutil
 from common.timeutil import ts_to_bjt_date, BJT, UTC
 
@@ -68,6 +68,8 @@ def process_code(code, config, log):
         fd = parse(sf)
         base = merge_and_dedup(base, fd, now_bjt=now_bjt)
     log.info(f'合并: {before} -> {len(base.rows)} 行')
+    _expand_to_11cols(base)
+    log.info(f'扩展: {len(base.rows)} 行 -> 11列 (Open/Low/High)')
     serialize(base, str(lp))
     log.info(f'Latest: {len(base.rows)} 行 (ts范围: {base.rows[0][0] if base.rows else "N/A"} ~ {base.rows[-1][0] if base.rows else "N/A"})')
     gitutil.add(str(lp), cwd=str(config.repo_root))
