@@ -72,18 +72,21 @@ def process_code(code, config, log):
     else:
         log.info(f'Latest: {len(latest.rows)} 行，无需裁剪')
 
-    # ── 3. 写回 Latest.mvsv ──
-    serialize(latest, str(latest_path))
-    log.info(f'Latest 写回: {len(latest.rows)} 行')
-    gitutil.add(str(latest_path), cwd=str(config.repo_root))
-    sha2 = gitutil.commit(
-        f'[quote] trim Latest for {code}'
-        f' (archive {len(archive_candidates)} rows, trim {trimmed} rows)',
-        cwd=str(config.repo_root),
-    )
-    if sha2:
-        log.info(f'裁剪 commit: {sha2}')
-    gitutil.push_with_retry(retries=config.git_push_retries, cwd=str(config.repo_root))
+    # ── 3. 有变更时写回 + 提交 ──
+    if archive_candidates or trimmed:
+        serialize(latest, str(latest_path))
+        log.info(f'Latest 写回: {len(latest.rows)} 行')
+        gitutil.add(str(latest_path), cwd=str(config.repo_root))
+        sha2 = gitutil.commit(
+            f'[quote] trim Latest for {code}'
+            f' (archive {len(archive_candidates)} rows, trim {trimmed} rows)',
+            cwd=str(config.repo_root),
+        )
+        if sha2:
+            log.info(f'裁剪 commit: {sha2}')
+        gitutil.push_with_retry(retries=config.git_push_retries, cwd=str(config.repo_root))
+    else:
+        log.info('无变更，跳过提交')
 
 
 def main():

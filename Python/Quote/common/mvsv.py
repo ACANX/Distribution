@@ -82,25 +82,27 @@ def _fmt_meta(key: str, value: str) -> str:
 
 def _ensure_datetime_cols(rows, now_bjt):
     """Add Date/Time (BJT yyyyMMdd/HHmmss) after ts if not present.
-    Returns (new_rows, added) where added=True if columns were added.
+    Checks each row individually to handle mixed column widths.
+    Returns (new_rows, added) where added=True if any row was modified.
     """
     if not rows:
         return rows, False
-    ncol = len(rows[0])
-    if ncol >= 8:  # already has Date/Time
-        return rows, False
-    if ncol == 6:  # raw format: ts|c|v|t|r|cp
-        from common.timeutil import ts_to_bjt_dt
-        new_rows = []
-        for r in rows:
+    from common.timeutil import ts_to_bjt_dt
+    new_rows = []
+    any_added = False
+    for r in rows:
+        if len(r) == 6:
             bjt_dt = ts_to_bjt_dt(int(r[0]))
-            new_rows.append([
+            r_new = [
                 r[0],
                 bjt_dt.strftime("%Y%m%d"),
                 bjt_dt.strftime("%H%M%S"),
-            ] + r[1:])
-        return new_rows, True
-    return rows, False
+            ] + r[1:]
+            new_rows.append(r_new)
+            any_added = True
+        else:
+            new_rows.append(r)
+    return new_rows, any_added
 
 
 _DT_FIELD = "ts|Date|Time|c|v|t|r|cp"
@@ -181,13 +183,15 @@ def serialize(data: MVSVData, path: str):
 
 
 def merge_and_dedup(existing, incoming, *, now_bjt):
+    existing.rows, ex_dt = _ensure_datetime_cols(existing.rows, now_bjt)
+    incoming.rows, in_dt = _ensure_datetime_cols(incoming.rows, now_bjt)
+    dt_added = ex_dt or in_dt
     rows_dict = {}
     for r in existing.rows:
         rows_dict[r[0]] = r
     for r in incoming.rows:
         rows_dict[r[0]] = r
     sorted_rows = sorted(rows_dict.values(), key=lambda r: int(r[0]))
-    sorted_rows, dt_added = _ensure_datetime_cols(sorted_rows, now_bjt)
     inc = incoming.metadata
     ex = existing.metadata
     md = MVSVMetadata()
