@@ -1,5 +1,11 @@
-name: QuoteAggregate
+name: Quote01Aggregate
 on:
+  push:
+    branches: [quote]
+    paths:
+      - 'Data/Finv/SecuQuote/**/*.mvsv'
+    paths-ignore:
+      - 'Data/Finv/SecuQuote/**/Latest.mvsv'
   workflow_dispatch:
     inputs:
       codes:
