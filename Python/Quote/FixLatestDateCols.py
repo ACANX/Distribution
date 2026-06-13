@@ -121,8 +121,8 @@ def main():
                 print(f'  ✅ {rel}: 修复 {fixed} 行')
                 total_fixed += fixed
                 total_files += 1
-            # 将 Latest.mvsv 从 8 列扩展为 11 列（Open/Low/High）
-            if is_latest and data.rows and len(data.rows[0]) == 8:
+            # 将 8 列数据扩展为 11 列（Open/Low/High）
+            if data.rows and len(data.rows[0]) == 8:
                 _expand_to_11cols(data)
                 serialize(data, path)
                 validate_after_fix(path, data, {11})
