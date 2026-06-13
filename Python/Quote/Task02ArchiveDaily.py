@@ -53,7 +53,7 @@ def process_code(code, config, log):
             log.info(f'写入: {ap.name} ({len(rows)} 行)')
             gitutil.add(str(ap), cwd=str(config.repo_root))
             archived_dates.append(ds)
-        commit_msg = f'[quote] archive daily for {code} ({len(archived_dates)} days)'
+        commit_msg = f'[Quote] Archive daily for {code} ({len(archived_dates)} days)'
         sha = gitutil.commit(commit_msg, cwd=str(config.repo_root))
         if sha:
             log.info(f'归档 commit: {sha}')
