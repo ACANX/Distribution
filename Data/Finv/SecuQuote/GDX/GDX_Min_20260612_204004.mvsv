@@ -10,7 +10,7 @@
 # Title : "GDX Minute Quote Data"
 # DataProvider : FT
 # Field : ts|c|v|t|r|cp
-# FieldName : Timestamp(UTC)|Close|Volume|Turnover|ChangePct(%)|Change
+# FieldName : Ts|Close|Volume|Turnover|ChangePercent|ChangePrice
 # FieldType : int|float|int|float|str|float
 # Count : 1950
 # FetchTime : "2026-06-12 20:40:04"
