@@ -81,8 +81,10 @@ def _fmt_meta(key: str, value: str) -> str:
     return f"# {key} : {value}"
 
 def _ensure_datetime_cols(rows, now_bjt):
-    """Add Date/Time (BJT yyyyMMdd/HHmmss) after ts if not present.
-    Checks each row individually to handle mixed column widths.
+    """Normalize each row to exactly 8 columns (ts|Date|Time|c|v|t|r|cp).
+    - 6 cols → insert Date/Time (BJT) after ts
+    - 8 cols → unchanged
+    - other → reconstruct: ts + Date/Time(BJT) + last 5 cols (c,v,t,r,cp)
     Returns (new_rows, added) where added=True if any row was modified.
     """
     if not rows:
@@ -91,7 +93,10 @@ def _ensure_datetime_cols(rows, now_bjt):
     new_rows = []
     any_added = False
     for r in rows:
-        if len(r) == 6:
+        n = len(r)
+        if n == 8:
+            new_rows.append(r)
+        elif n == 6:
             bjt_dt = ts_to_bjt_dt(int(r[0]))
             r_new = [
                 r[0],
@@ -101,7 +106,14 @@ def _ensure_datetime_cols(rows, now_bjt):
             new_rows.append(r_new)
             any_added = True
         else:
-            new_rows.append(r)
+            bjt_dt = ts_to_bjt_dt(int(r[0]))
+            r_new = [
+                r[0],
+                bjt_dt.strftime("%Y%m%d"),
+                bjt_dt.strftime("%H%M%S"),
+            ] + r[-5:]
+            new_rows.append(r_new)
+            any_added = True
     return new_rows, any_added
 
 
