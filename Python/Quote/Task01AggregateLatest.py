@@ -44,7 +44,7 @@ def cleanup_raw(source_files, latest_path, code, config, log):
                 f'文件 ts 范围 [{fmn}, {fmx}] 未被 Latest [{mn}, {mx}] 完整覆盖'
             )
     if removed:
-        sha = gitutil.commit(f'[quote] cleanup raw for {code}', cwd=str(config.repo_root))
+        sha = gitutil.commit(f'[Quote] Cleanup raw for {code}', cwd=str(config.repo_root))
         if sha:
             log.info(f'清理 commit: {sha}')
     gitutil.push_with_retry(retries=config.git_push_retries, cwd=str(config.repo_root))
@@ -73,7 +73,7 @@ def process_code(code, config, log):
     serialize(base, str(lp))
     log.info(f'Latest: {len(base.rows)} 行 (ts范围: {base.rows[0][0] if base.rows else "N/A"} ~ {base.rows[-1][0] if base.rows else "N/A"})')
     gitutil.add(str(lp), cwd=str(config.repo_root))
-    sha = gitutil.commit(f'[quote] aggregate Latest for {code}', cwd=str(config.repo_root))
+    sha = gitutil.commit(f'[Quote] Aggregate Latest for {code}', cwd=str(config.repo_root))
     if sha:
         log.info(f'Latest commit: {sha}')
     gitutil.push_with_retry(retries=config.git_push_retries, cwd=str(config.repo_root))
