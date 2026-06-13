@@ -4,8 +4,7 @@ on:
     branches: [quote]
     paths:
       - 'Data/Finv/SecuQuote/**/*.mvsv'
-    paths-ignore:
-      - 'Data/Finv/SecuQuote/**/Latest.mvsv'
+      - '!Data/Finv/SecuQuote/**/Latest.mvsv'
   workflow_dispatch:
     inputs:
       codes:
