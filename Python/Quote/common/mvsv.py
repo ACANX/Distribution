@@ -121,7 +121,7 @@ def _ensure_datetime_cols(rows, now_bjt):
 def _expand_to_11cols(data):
     """Expand 8-col rows to 11-col: ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent.
     Open:
-      - First row: Close + ChangePrice
+      - First row: Close - ChangePrice (precision matched to input)
       - Subsequent rows with ts diff == 60s: prev Close
       - Otherwise: '' (gap in data)
     Low/High = '' (no upstream data yet).
@@ -130,6 +130,13 @@ def _expand_to_11cols(data):
     if not data.rows:
         return data
 
+    def _calc_open(close_str, cp_str):
+        prec = max(
+            len(close_str.split(".")[1]) if "." in close_str else 0,
+            len(cp_str.split(".")[1]) if "." in cp_str else 0,
+        )
+        return format(float(close_str) - float(cp_str), f".{prec}f")
+
     new_rows = []
     prev_close = None
     prev_ts = None
@@ -137,22 +144,22 @@ def _expand_to_11cols(data):
     for r in data.rows:
         n = len(r)
         if n == 11:
-            # Recalculate first-row Open when expanding to merge other data
             ts = int(r[0])
             close = r[4]
             change_price = r[9]
             if prev_close is None:
-                r[3] = str(float(close) - float(change_price))
+                r[3] = _calc_open(close, change_price)
             new_rows.append(r)
             prev_close = close
             prev_ts = ts
+            continue
         elif n == 8:
             ts = int(r[0])
             close = r[3]
             if prev_close is not None and prev_ts is not None and (ts - prev_ts) == 60:
                 open_val = prev_close
             elif prev_close is None:
-                open_val = str(float(close) - float(r[7]))
+                open_val = _calc_open(close, r[7])
             else:
                 open_val = ""
         new_row = [
@@ -173,7 +180,6 @@ def _expand_to_11cols(data):
     data.rows = new_rows
     _set_meta_11cols(data.metadata)
     return data
-
 
 _11_FIELD = "ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 _11_FIELD_CN = _11_FIELD
