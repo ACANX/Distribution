@@ -86,7 +86,7 @@ Quote03ArchiveMonth.yml # 任务三：按月归档
 ```
 # 标题 : "{title}"
 # 数据供应商 : {data_provider}
-# 字段 : ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent
+# 字段 : Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent
 # 字段名称 : 时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)
 # 字段类型 : int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str
 # 计数 : {count}
@@ -96,7 +96,7 @@ Quote03ArchiveMonth.yml # 任务三：按月归档
 # 备注 : "{remark}"
 # Title : "{title_en}"
 # DataProvider : {data_provider_en}
-# Field : ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent
+# Field : Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent
 # FieldName : Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent
 # FieldType : int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str
 # Count : {count}

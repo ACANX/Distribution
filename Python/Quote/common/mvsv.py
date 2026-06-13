@@ -187,7 +187,7 @@ def _expand_to_11cols(data):
     _set_meta_11cols(data.metadata)
     return data
 
-_11_FIELD = "ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
+_11_FIELD = "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 _11_FIELD_CN = _11_FIELD
 _11_NAME = "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 _11_NAME_EN = "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
@@ -205,8 +205,8 @@ def _set_meta_11cols(meta):
 
 
 # 8-column format constants (intermediate, with Date/Time)
-_DT_FIELD = "ts|Date|Time|c|v|t|r|cp"
-_DT_FIELD_CN = "ts|Date|Time|c|v|t|r|cp"
+_DT_FIELD = "Ts|Date|Time|c|v|t|r|cp"
+_DT_FIELD_CN = "Ts|Date|Time|c|v|t|r|cp"
 _DT_NAME = "时间戳(UTC)|日期|时间|收盘价|成交量|成交额|涨跌幅(%)|涨跌值"
 _DT_NAME_EN = "Ts|Date|Time|Close|Volume|Turnover|ChangePercent|ChangePrice"
 _DT_TYPE = "int|int|int|Decimal|Decimal|Decimal|str|Decimal"

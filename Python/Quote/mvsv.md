@@ -14,7 +14,7 @@ MVSV 是 MetaX 定义的竖线分隔值文件格式，由元数据区 + 空行 +
 原始采集文件使用此格式，**只读不改**。
 
 ```
-# 字段 : ts|c|v|t|r|cp
+# 字段 : Ts|c|v|t|r|cp
 # 字段名称 : 时间戳(UTC)|收盘价|成交量|成交额|涨跌幅(%)|涨跌值
 # 字段类型 : int|Decimal|int|Decimal|str|Decimal
 ```
@@ -35,7 +35,7 @@ MVSV 是 MetaX 定义的竖线分隔值文件格式，由元数据区 + 空行 +
 经 `merge_and_dedup` 内部使用的中间格式，添加了 Date/Time 列。
 
 ```
-# 字段 : ts|Date|Time|Close|Volume|Turnover|ChangePercent|ChangePrice
+# 字段 : Ts|Date|Time|Close|Volume|Turnover|ChangePercent|ChangePrice
 # 字段名称 : 时间戳(UTC)|日期|时间|收盘价|成交量|成交额|涨跌幅(%)|涨跌值
 # 字段类型 : int|int|int|Decimal|Decimal|Decimal|str|Decimal
 ```
@@ -58,7 +58,7 @@ MVSV 是 MetaX 定义的竖线分隔值文件格式，由元数据区 + 空行 +
 `Latest.mvsv` 及 `Archive/` 目录下的归档文件使用此格式。
 
 ```
-# 字段 : ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent
+# 字段 : Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent
 # 字段名称 : 时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)
 # 字段类型 : int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str
 ```
