@@ -1,20 +1,20 @@
-# 标题 : IAU Test
+# 标题 : IAU 分钟级行情数据
 # 数据供应商 : FT
 # 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
-# 字段类型 : "int|int|int|float|float|float|float|int|float|float|str"
+# 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 1952
-# 采集时间 : "2026-06-13 16:43:33"
+# 采集时间 : "2026-06-13 21:00:39"
 # 证券代码 : IAU
 # 市场 : usd
-# 备注 : "汇总: c=84280|h=82930|l=76220|cnt=1950"
-# Title : IAU Test
+# 备注 : "汇总: c=81220|h=81930|l=76220|cnt=1950"
+# Title : IAU Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
-# FieldType : "int|int|int|float|float|float|float|int|float|float|str"
+# FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 1952
-# FetchTime : "2026-06-13 16:43:33"
+# FetchTime : "2026-06-13 21:00:39"
 # SecuCode : IAU
 # Market : usd
 
@@ -1589,7 +1589,7 @@
 1781271540|20260612|213900|79.07|79.15|||19780|1564822.219|0.02|0.03
 1781271600|20260612|214000|79.15|79.13|||16382|1296294.148|0|0.00
 1781271660|20260612|214100|79.13|78.83|||201172|15880248.573|-0.3|-0.38
-1781271720|20260612|214200|78.83|78.77|||52717|4154051.214|-0.36|-0.45
+1781271720|20260612|214200|78.83|78.77|||52817|4161936.214|-0.36|-0.45
 1781271780|20260612|214300|78.77|78.72|||41628|3278196.845|-0.41|-0.52
 1781271840|20260612|214400|78.72|78.76|||18744|1475686.787|-0.37|-0.47
 1781271900|20260612|214500|78.76|78.825|||19412|1530272.247|-0.305|-0.39
