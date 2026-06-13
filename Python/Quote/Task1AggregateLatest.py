@@ -49,7 +49,7 @@ def archive_and_trim(base, code, config, log):
     return MVSVData(metadata=base.metadata, rows=keep_rows)
 
 
-def cleanup_raw(source_files, latest_path, config, log):
+def cleanup_raw(source_files, latest_path, code, config, log):
     """Remove raw files fully covered by Latest."""
     latest = parse(str(latest_path))
     if not latest.rows:
@@ -106,7 +106,7 @@ def process_code(code, config, log):
         log.info(f'Latest commit: {sha}')
     gitutil.push_with_retry(retries=config.git_push_retries, cwd=str(config.repo_root))
     if config.cleanup_raw_after_aggregate:
-        cleanup_raw(source_files, lp, config, log)
+        cleanup_raw(source_files, lp, code, config, log)
 
 
 def main():

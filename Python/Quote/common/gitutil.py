@@ -56,7 +56,13 @@ def push_with_retry(ref: Optional[str] = None, retries: int = 1,
                     cwd: Optional[str] = None) -> None:
     """Push with retry on failure (git pull --rebase + retry).
     If ref is None, uses the current branch.
+    Skipped if QUOTE_SKIP_PUSH env var is set (local testing).
     """
+    import os as _os
+    if _os.environ.get("QUOTE_SKIP_PUSH"):
+        import logging as _log
+        _log.getLogger("quote.gitutil").info("QUOTE_SKIP_PUSH set, push skipped")
+        return
     if ref is None:
         ref = _get_current_branch(cwd)
     for attempt in range(retries + 1):
