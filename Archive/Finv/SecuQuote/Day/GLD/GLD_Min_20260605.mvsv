@@ -4,7 +4,7 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|收盘价|成交量|成交额|涨跌幅(%)|涨跌值"
 # 字段类型 : "int|int|int|float|int|float|str|float"
 # 计数 : 149
-# 采集时间 : "2026-06-13 16:06:48"
+# 采集时间 : "2026-06-13 16:08:47"
 # 证券代码 : GLD
 # 市场 : usd
 # 备注 : "汇总: c=411270|h=404690|l=371970|cnt=1950"
@@ -14,7 +14,7 @@
 # FieldName : "Ts|Date|Time|Close|Volume|Turnover|ChangePercent|ChangePrice"
 # FieldType : "int|int|int|float|int|float|str|float"
 # Count : 149
-# FetchTime : "2026-06-13 16:06:48"
+# FetchTime : "2026-06-13 16:08:47"
 # SecuCode : GLD
 # Market : usd
 
