@@ -1,0 +1,39 @@
+name: QuoteArchiveDay
+on:
+  workflow_dispatch:
+    inputs:
+      codes:
+        description: "仅处理指定证券（逗号分隔，留空=全部）"
+        required: false
+        default: ""
+  schedule:
+    - cron: "0 3 * * 1,3,5"
+concurrency:
+  group: quote-all
+  cancel-in-progress: false
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: quote
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r Python/Quote/requirements.txt
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Run Task02ArchiveDaily
+        env:
+          QUOTE_CODES: ${{ github.event.inputs.codes }}
+        run: python Python/Quote/Task2ArchiveDaily.py
+      - name: VerifyCleanPush
+        run: |
+          git log origin/quote..HEAD --oneline | (! read)
+          git status --short | (! read)

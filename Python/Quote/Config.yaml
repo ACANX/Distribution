@@ -1,0 +1,17 @@
+RepoRoot: .
+DataRel: Data/Finv/SecuQuote
+ArchiveRel: Archive/Finv/SecuQuote
+Codes: []
+LatestWindowDays: 14
+DailyArchiveAfterDays: 7
+MonthlyCron: '0 2 15-21 * 1'
+MonthlyDeleteLagMonths: 2
+CleanupRawAfterAggregate: true
+LogDir: Python/Quote/logs
+LogRetentionDays: 14
+GitPushRetries: 1
+HolidaysFiles:
+  cny: Python/Quote/common/holidays/cny.csv
+  hkd: Python/Quote/common/holidays/hkd.csv
+  usd: Python/Quote/common/holidays/usd.csv
+  crypto: Python/Quote/common/holidays/crypto.csv

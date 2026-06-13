@@ -1,0 +1,159 @@
+﻿#!/usr/bin/env python3
+"""Task 3: Archive monthly from daily archives"""
+import sys, os
+from datetime import datetime, timedelta
+from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from common.config import load_config
+from common.logger import setup_logger
+from common.mvsv import MVSVData, MVSVMetadata, parse, serialize, merge_and_dedup
+from common import gitutil
+from common.timeutil import (
+    BJT, UTC, last_complete_month, ts_to_bjt_date,
+    get_trading_days_in_month, infer_market_from_code,
+)
+
+TASK_NAME = 'task3'
+
+
+def get_market(code, metadata):
+    m = metadata.get('市场') or metadata.get('Market') or ''
+    if not m:
+        m = infer_market_from_code(code)
+    return m
+
+
+def check_completeness(code, month_str, daily_files, config, metadata, log):
+    """Check if all trading days in the month have daily archives."""
+    year = int(month_str[:4])
+    month = int(month_str[4:6])
+    market = get_market(code, metadata)
+    trading_days = get_trading_days_in_month(year, month, market, config.holidays_files)
+    archived_dates = set()
+    for f in daily_files:
+        parts = Path(f).stem.split('_')
+        if len(parts) >= 3:
+            archived_dates.add(parts[-1])
+    missing = [d.strftime('%Y%m%d') for d in trading_days if d.strftime('%Y%m%d') not in archived_dates]
+    if missing:
+        log.warning(f'缺失交易日: {missing}')
+        return False
+    return True
+
+
+def process_code(code, config, start_ts, end_ts, month_str, log):
+    day_dir = config.archive_dir / 'Day' / code
+    if not day_dir.is_dir():
+        log.info('无日归档目录')
+        return
+    daily_files = sorted(day_dir.glob(f'{code}_Min_*.mvsv'))
+    if not daily_files:
+        log.info('无日归档文件')
+        return
+    month_files = []
+    for f in daily_files:
+        try:
+            data = parse(str(f))
+        except Exception:
+            continue
+        if not data.rows:
+            continue
+        first_ts = int(data.rows[0][0])
+        if start_ts <= first_ts < end_ts:
+            month_files.append(f)
+    if not month_files:
+        log.info('当月无日归档')
+        return
+    log.info(f'当月日归档: {len(month_files)} 个')
+    if not check_completeness(code, month_str, month_files, config, parse(str(month_files[0])).metadata, log):
+        log.warning('交易日不完备，跳过')
+        return
+    now_bjt = datetime.now(BJT)
+    base = None
+    for f in sorted(month_files, key=lambda p: p.stat().st_mtime_ns):
+        fd = parse(str(f))
+        if base is None:
+            base = fd
+        else:
+            base = merge_and_dedup(base, fd, now_bjt=now_bjt)
+    if base is None:
+        return
+    log.info(f'合并: {len(base.rows)} 行')
+    month_dir = config.archive_dir / month_str[:4] / code
+    month_dir.mkdir(parents=True, exist_ok=True)
+    mp = month_dir / f'{code}_Min_{month_str}.mvsv'
+    if mp.exists():
+        existing = parse(str(mp))
+        base = merge_and_dedup(existing, base, now_bjt=now_bjt)
+        log.info(f'月归档已存在，合并: {len(base.rows)} 行')
+    serialize(base, str(mp))
+    log.info(f'月归档: {mp.name} ({len(base.rows)} 行)')
+    gitutil.add(str(mp), cwd=str(config.repo_root))
+    sha = gitutil.commit(f'[quote] archive monthly {month_str} for {code}', cwd=str(config.repo_root))
+    if sha:
+        log.info(f'月归档 commit: {sha}')
+    now_bjt_date = datetime.now(BJT)
+    delete_year = int(month_str[:4])
+    delete_month = int(month_str[4:6])
+    lag_months = (now_bjt_date.year - delete_year) * 12 + (now_bjt_date.month - delete_month)
+    if lag_months >= config.monthly_delete_lag_months:
+        monthly_data = parse(str(mp))
+        if not monthly_data.rows:
+            return
+        mmn = int(monthly_data.rows[0][0])
+        mmx = int(monthly_data.rows[-1][0])
+        to_delete = []
+        for f in month_files:
+            try:
+                fd = parse(str(f))
+            except Exception:
+                continue
+            if not fd.rows:
+                continue
+            fmn = int(fd.rows[0][0])
+            fmx = int(fd.rows[-1][0])
+            if fmn >= mmn and fmx <= mmx:
+                to_delete.append(f)
+        if to_delete:
+            for f in to_delete:
+                gitutil.rm(str(f), cwd=str(config.repo_root))
+            sha2 = gitutil.commit(
+                f'[quote] cleanup daily {month_str} for {code} ({len(to_delete)} files)',
+                cwd=str(config.repo_root),
+            )
+            if sha2:
+                log.info(f'清理 commit: {sha2}')
+    else:
+        log.info(f'延迟窗口未到 ({lag_months}/{config.monthly_delete_lag_months}), 不清理')
+    gitutil.push_with_retry(retries=config.git_push_retries, cwd=str(config.repo_root))
+
+
+def main():
+    config = load_config()
+    log = setup_logger(TASK_NAME, str(config.log_dir), config.log_retention_days)
+    log.info('=' * 50)
+    start_ts, end_ts, month_str = last_complete_month()
+    log.info(f'任务三: 按月归档 ({month_str})')
+    codes = config.codes or sorted(d.name for d in config.data_dir.iterdir() if d.is_dir())
+    log.info(f'证券: {codes}')
+    start = datetime.now()
+    ok = fail = 0
+    for code in codes:
+        cl = log.for_code(code)
+        cl.info('--- 开始 ---')
+        try:
+            process_code(code, config, start_ts, end_ts, month_str, cl)
+            cl.info('--- 完成 ---')
+            ok += 1
+        except Exception as e:
+            cl.error(f'失败: {e}')
+            fail += 1
+    sec = (datetime.now() - start).total_seconds()
+    log.info(f'完成: 成功 {ok}, 失败 {fail}, 耗时 {sec:.1f}s')
+    if fail:
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main()
