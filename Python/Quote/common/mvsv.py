@@ -116,9 +116,9 @@ def _update_meta_with_datetime(meta):
         meta["字段"] = _DT_FIELD_CN
     if meta.get("Field") and "Date|Time" not in meta["Field"]:
         meta["Field"] = _DT_FIELD
-    if meta.get("字段名称") and "时间" not in meta["字段名称"]:
+    if meta.get("字段名称") and len(meta["字段名称"].split("|")) == 6:
         meta["字段名称"] = _DT_NAME
-    if meta.get("FieldName") and "Date" not in meta["FieldName"]:
+    if meta.get("FieldName") and len(meta["FieldName"].split("|")) == 6:
         meta["FieldName"] = _DT_NAME_EN
     if meta.get("字段类型") and len(meta["字段类型"].split("|")) == 6:
         meta["字段类型"] = _DT_TYPE
