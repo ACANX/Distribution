@@ -32,7 +32,7 @@ jobs:
       - name: Run Task3ArchiveMonthly
         env:
           QUOTE_CODES: ${{ github.event.inputs.codes }}
-        run: python Python/Quote/Task3ArchiveMonthly.py
+        run: python Python/Quote/Task03ArchiveMonthly.py
       - name: VerifyCleanPush
         run: |
           git log origin/quote..HEAD --oneline | (! read)
