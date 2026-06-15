@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-06-15T23:21:51.058653+00:00",
+  "state_backend": "dynamodb",
+  "cache_hit": true,
+  "backend_read_attempted": false,
+  "backend_read_success": false,
+  "local_write_success": true,
+  "backend_write_success": true,
+  "selected_code": "GDX",
+  "reason": "score",
+  "reason_detail": "收益最大 - 距上次新数据3.6小时, 市场时段活跃(权重10.0), 无新数据1次, 惩罚x2",
+  "poll_success": true,
+  "errors": []
+}
