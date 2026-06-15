@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-06-15T20:05:17.940669+00:00",
+  "state_backend": "dynamodb",
+  "cache_hit": true,
+  "backend_read_attempted": false,
+  "backend_read_success": false,
+  "local_write_success": true,
+  "backend_write_success": true,
+  "selected_code": "399006",
+  "poll_success": false,
+  "errors": []
+}
