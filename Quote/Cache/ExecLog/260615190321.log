@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-06-15T19:03:21.268500+00:00",
+  "state_backend": "dynamodb",
+  "cache_hit": false,
+  "backend_read_attempted": true,
+  "backend_read_success": true,
+  "local_write_success": true,
+  "backend_write_success": true,
+  "selected_code": "NVDA",
+  "poll_success": true,
+  "errors": []
+}
