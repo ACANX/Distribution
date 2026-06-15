@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-06-15T21:06:46.870812+00:00",
+  "state_backend": "dynamodb",
+  "cache_hit": true,
+  "backend_read_attempted": false,
+  "backend_read_success": false,
+  "local_write_success": true,
+  "backend_write_success": true,
+  "selected_code": "HSIII",
+  "reason": "score",
+  "reason_detail": "收益最大 - 距上次新数据720.0小时, 失败2次, 惩罚x4",
+  "poll_success": false,
+  "errors": []
+}
