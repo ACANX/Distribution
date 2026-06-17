@@ -3,18 +3,18 @@
 # 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# 计数 : 1687
-# 采集时间 : "2026-06-17 07:11:06"
+# 计数 : 1689
+# 采集时间 : "2026-06-17 09:32:05"
 # 证券代码 : 161116
 # 市场 : cny
-# 备注 : "汇总: c=1610|h=1618|l=1513|cnt=1205"
+# 备注 : "汇总: c=1564|h=1618|l=1513|cnt=966"
 # Title : 161116 Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# Count : 1687
-# FetchTime : "2026-06-17 07:11:06"
+# Count : 1689
+# FetchTime : "2026-06-17 09:32:05"
 # SecuCode : 161116
 # Market : cny
 
@@ -1705,3 +1705,5 @@
 1781593080|20260616|145800|1.602|1.602|||0|0|0.001|0.06
 1781593140|20260616|145900|1.602|1.602|||0|0|0.001|0.06
 1781593200|20260616|150000|1.602|1.6|||52100|83360|-0.001|-0.06
+1781659800|20260617|093000||1.609|||82300|132420.7|0.009|0.56
+1781659860|20260617|093100|1.609|1.61|||363204|584620.636|0.01|0.63
