@@ -1,0 +1,13 @@
+{
+  "cache-control": "no-cache",
+  "connection": "keep-alive",
+  "content-type": "text/event-stream",
+  "date": "Thu, 18 Jun 2026 14:43:08 GMT",
+  "referrer-policy": "strict-origin-when-cross-origin",
+  "server": "nginx/1.29.7",
+  "transfer-encoding": "chunked",
+  "x-client-request-id": "bd09a003-709d-4659-8cd5-be65c92fdcf3",
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "x-request-id": "62e5f52e-905e-497c-8799-64b01613ca59, cb6c9e1e-d0b2-4ef7-a1da-6e76233027b5"
+}
