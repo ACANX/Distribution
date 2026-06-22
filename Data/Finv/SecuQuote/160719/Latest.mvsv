@@ -3,18 +3,18 @@
 # 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# 计数 : 1205
-# 采集时间 : "2026-06-22 03:57:13"
+# 计数 : 1207
+# 采集时间 : "2026-06-22 09:32:07"
 # 证券代码 : 160719
 # 市场 : cny
-# 备注 : "汇总: c=1831|h=1931|l=1859|cnt=1205"
+# 备注 : "汇总: c=1865|h=1931|l=1881|cnt=966"
 # Title : 160719 Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# Count : 1205
-# FetchTime : "2026-06-22 03:57:13"
+# Count : 1207
+# FetchTime : "2026-06-22 09:32:07"
 # SecuCode : 160719
 # Market : cny
 
@@ -1223,3 +1223,5 @@
 1781765880|20260618|145800|1.915|1.915|||0|0|-0.01|-0.52
 1781765940|20260618|145900|1.915|1.915|||0|0|-0.01|-0.52
 1781766000|20260618|150000|1.915|1.915|||15202|29111.83|-0.01|-0.52
+1782091800|20260622|093000||1.888|||25600|48332.8|-0.027|-1.41
+1782091860|20260622|093100|1.888|1.881|||215590|406107.95|-0.034|-1.78
