@@ -21,8 +21,8 @@ class Config:
     data_dir: Path               # 原始采集数据根目录
     archive_dir: Path            # 归档根目录
     codes: List[str] = field(default_factory=list)
-    latest_window_days: int = 14
-    daily_archive_after_days: int = 7
+    latest_window_days: int = 20
+    daily_archive_after_days: int = 10
     monthly_delete_lag_months: int = 2
     cleanup_raw_after_aggregate: bool = True
     log_dir: Path = field(default_factory=lambda: Path('Python/Quote/logs'))
@@ -76,8 +76,8 @@ def load_config() -> Config:
         data_dir=(repo_root / raw.get('DataRel', 'Data/Finv/SecuQuote')).resolve(),
         archive_dir=(repo_root / raw.get('ArchiveRel', 'Archive/Finv/SecuQuote')).resolve(),
         codes=codes,
-        latest_window_days=int(raw.get('LatestWindowDays', 14)),
-        daily_archive_after_days=int(raw.get('DailyArchiveAfterDays', 7)),
+        latest_window_days=int(raw.get('LatestWindowDays', 20)),
+        daily_archive_after_days=int(raw.get('DailyArchiveAfterDays', 10)),
         monthly_delete_lag_months=int(raw.get('MonthlyDeleteLagMonths', 2)),
         cleanup_raw_after_aggregate=bool(raw.get('CleanupRawAfterAggregate', True)),
         log_dir=repo_root / raw.get('LogDir', 'Python/Quote/logs'),
