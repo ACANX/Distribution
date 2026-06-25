@@ -1,0 +1,15 @@
+{
+  "ts": 1782353814,
+  "dt": "2026-06-25 10:16:54 UTC",
+  "state_backend": "dynamodb",
+  "cache_hit": false,
+  "backend_read_attempted": true,
+  "backend_read_success": true,
+  "local_write_success": true,
+  "backend_write_success": true,
+  "selected_code": "000985",
+  "reason": "force",
+  "reason_detail": "强制采集 (超过72小时未检查) - 距上次检查72.1小时",
+  "poll_success": true,
+  "errors": []
+}
