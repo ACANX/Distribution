@@ -4,7 +4,7 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 1986
-# 采集时间 : "2026-06-29 17:47:13"
+# 采集时间 : "2026-06-29 23:52:26"
 # 证券代码 : HTI
 # 市场 : usd
 # 备注 : "汇总: c=4549410|h=4553930|l=4230900|cnt=1655"
@@ -14,7 +14,7 @@
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 1986
-# FetchTime : "2026-06-29 17:47:13"
+# FetchTime : "2026-06-29 23:52:26"
 # SecuCode : HTI
 # Market : usd
 
