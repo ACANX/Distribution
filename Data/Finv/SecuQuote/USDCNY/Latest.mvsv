@@ -3,18 +3,18 @@
 # 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# 计数 : 11141
-# 采集时间 : "2026-06-30 19:25:34"
+# 计数 : 11142
+# 采集时间 : "2026-06-30 19:27:13"
 # 证券代码 : USDCNY
 # 市场 : usd
-# 备注 : "汇总: c=6790|h=6815.7|l=6785.199|cnt=6621"
+# 备注 : "汇总: c=6790|h=6815.7|l=6785.199|cnt=6622"
 # Title : USDCNY Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# Count : 11141
-# FetchTime : "2026-06-30 19:25:34"
+# Count : 11142
+# FetchTime : "2026-06-30 19:27:13"
 # SecuCode : USDCNY
 # Market : usd
 
@@ -11159,3 +11159,4 @@
 1782818580|20260630|192300|6.793199|6.792299|||0|0|-0.001301|-0.02
 1782818640|20260630|192400|6.792299|6.792499|||0|0|-0.001101|-0.02
 1782818700|20260630|192500|6.792499|6.792199|||0|0|-0.001401|-0.02
+1782818760|20260630|192600|6.792199|6.793399|||0|0|-0.000201|-0.00
