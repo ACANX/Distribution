@@ -1,0 +1,15 @@
+{
+  "ts": 1782897411,
+  "dt": "2026-07-01 17:16:51 UTC",
+  "state_backend": "dynamodb",
+  "cache_hit": true,
+  "backend_read_attempted": false,
+  "backend_read_success": false,
+  "local_write_success": true,
+  "backend_write_success": true,
+  "selected_code": "SPCX",
+  "reason": "score",
+  "reason_detail": "收益最大 - 距上次新数据8.3小时, 市场时段活跃(权重10.0), 基础权重高(x51), 无新数据4次, 惩罚x16",
+  "poll_success": true,
+  "errors": []
+}
