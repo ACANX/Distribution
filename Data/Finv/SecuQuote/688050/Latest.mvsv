@@ -4,7 +4,7 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 2136
-# 采集时间 : "2026-07-01 21:57:15"
+# 采集时间 : "2026-07-02 05:47:16"
 # 证券代码 : 688050
 # 市场 : cny
 # 备注 : "汇总: c=37470|h=40050|l=35300|cnt=1335"
@@ -14,7 +14,7 @@
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 2136
-# FetchTime : "2026-07-01 21:57:15"
+# FetchTime : "2026-07-02 05:47:16"
 # SecuCode : 688050
 # Market : cny
 
