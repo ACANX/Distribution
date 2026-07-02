@@ -15,7 +15,7 @@ from common.timeutil import (
     get_trading_days_in_month, infer_market_from_code,
 )
 
-TASK_NAME = 'task3'
+TASK_NAME = 'Task03ArchiveMonthly'
 
 
 def get_market(code, metadata):
