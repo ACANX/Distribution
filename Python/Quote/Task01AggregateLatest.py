@@ -12,7 +12,7 @@ from common.mvsv import MVSVData, MVSVMetadata, parse, serialize, merge_and_dedu
 from common import gitutil
 from common.timeutil import ts_to_bjt_date, BJT, UTC
 
-TASK_NAME = 'task1'
+TASK_NAME = 'Task01AggregateLatest'
 
 
 def cleanup_raw(source_files, latest_path, code, config, log):
