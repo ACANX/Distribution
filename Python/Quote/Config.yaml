@@ -3,7 +3,7 @@ DataRel: Data/Finv/SecuQuote
 ArchiveRel: Archive/Finv/SecuQuote
 Codes: []
 LatestWindowDays: 20
-DailyArchiveAfterDays: 15
+DailyArchiveAfterDays: 10
 MonthlyCron: '0 2 15-21 * 1'
 MonthlyDeleteLagMonths: 2
 CleanupRawAfterAggregate: true
