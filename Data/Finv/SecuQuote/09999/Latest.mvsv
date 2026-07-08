@@ -3,18 +3,18 @@
 # 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# 计数 : 2979
-# 采集时间 : "2026-07-08 05:17:19"
+# 计数 : 2981
+# 采集时间 : "2026-07-08 09:47:21"
 # 证券代码 : 09999
 # 市场 : cny
-# 备注 : "汇总: c=199400|h=210800|l=198500|cnt=1655"
+# 备注 : "汇总: c=202400|h=210800|l=198500|cnt=1326"
 # Title : 09999 Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# Count : 2979
-# FetchTime : "2026-07-08 05:17:19"
+# Count : 2981
+# FetchTime : "2026-07-08 09:47:21"
 # SecuCode : 09999
 # Market : cny
 
@@ -2997,3 +2997,5 @@
 1783411080|20260707|155800|205.8|205.6|||32300|6642620|-2.8|-1.34
 1783411140|20260707|155900|205.6|205.4|||74600|15324020|-3|-1.44
 1783411200|20260707|160000|205.4|205.2|||712700|146246810|-3.2|-1.54
+1783474200|20260708|093000||206.2|||190100|39198620|1|0.49
+1783474260|20260708|093100|206.2|208.2|||63700|13195150|3|1.46
