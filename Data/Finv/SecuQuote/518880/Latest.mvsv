@@ -3,18 +3,18 @@
 # 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# 计数 : 2768
-# 采集时间 : "2026-07-09 11:27:20"
+# 计数 : 2772
+# 采集时间 : "2026-07-09 12:42:22"
 # 证券代码 : 518880
 # 市场 : cny
-# 备注 : "汇总: c=8475|h=8733|l=8447|cnt=1081"
+# 备注 : "汇总: c=8475|h=8733|l=8447|cnt=1085"
 # Title : 518880 Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# Count : 2768
-# FetchTime : "2026-07-09 11:27:20"
+# Count : 2772
+# FetchTime : "2026-07-09 12:42:22"
 # SecuCode : 518880
 # Market : cny
 
@@ -2786,3 +2786,7 @@
 1783567440|20260709|112400|8.455|8.455|||823700|6963395|-0.134|-1.56
 1783567500|20260709|112500|8.455|8.455|||554100|4684996|-0.134|-1.56
 1783567560|20260709|112600|8.455|8.457|||367400|3106924|-0.132|-1.54
+1783567620|20260709|112700|8.457|8.46|||400500|3387751|-0.129|-1.50
+1783567680|20260709|112800|8.46|8.458|||1336800|11308044|-0.131|-1.53
+1783567740|20260709|112900|8.458|8.455|||430300|3638366|-0.134|-1.56
+1783567800|20260709|113000|8.455|8.455|||704000|5952142|-0.134|-1.56
