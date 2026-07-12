@@ -1,0 +1,15 @@
+{
+  "ts": 1783881115,
+  "dt": "2026-07-13 02:31:55 UTC",
+  "state_backend": "dynamodb",
+  "cache_hit": false,
+  "backend_read_attempted": true,
+  "backend_read_success": true,
+  "local_write_success": true,
+  "backend_write_success": true,
+  "selected_code": "USDCNY",
+  "reason": "score",
+  "reason_detail": "收益最大 - 距上次新数据45.4小时, 市场时段活跃(权重8.0), 基础权重高(x95), 无新数据7次, 惩罚x128",
+  "poll_success": true,
+  "errors": []
+}
