@@ -1,0 +1,15 @@
+{
+  "ts": 1783993910,
+  "dt": "2026-07-14 09:51:50 UTC",
+  "state_backend": "dynamodb",
+  "cache_hit": true,
+  "backend_read_attempted": false,
+  "backend_read_success": false,
+  "local_write_success": true,
+  "backend_write_success": true,
+  "selected_code": "518880",
+  "reason": "score",
+  "reason_detail": "收益最大 - 距上次新数据18.0小时, 市场时段活跃(权重10.0), 基础权重高(x92), 无新数据4次, 惩罚x16",
+  "poll_success": true,
+  "errors": []
+}
