@@ -224,7 +224,7 @@ last_complete_month(now_bjt) -> (start_ts, end_ts, yyyymm)
 2. 扫描 `Archive/Finv/SecuQuote/Day/{code}/{code}_Min_yyyyMMdd.mvsv`，筛选落在该月内的日文件。
 3. 完备性检查：
    - 该月每一天（按**对应市场的节假日文件**扣除周末与节假日，市场信息来自 mvsv 元数据 `# 市场`/`# Market`，缺失时按"证券代码规则"兜底）都应有日归档；
-   - 若缺失，记录 WARNING 并跳过该月（不强制合并）。
+   - 若缺失，仍聚合现有日归档，并在月归档元数据的 `# 备注` / `# Remark` 中记录缺失交易日；后续增量运行会重新计算该备注。
    - 节假日文件按 `Config.yaml` 的 `holidays_files` 字典定位；若对应市场的文件缺失则记录 ERROR 并跳过该证券的月归档。
 4. 合并所有日文件 → `merge_and_dedup`，日文件之间按 mtime 升序 fold（mtime 较新者为 incoming，覆盖同 ts；每次 fold 按 4.3 重写 `# 计数` / `# 采集时间`）。
 5. 写入 `Archive/Finv/SecuQuote/{yyyy}/{code}/{code}_Min_yyyyMM.mvsv`：
@@ -398,7 +398,7 @@ Actions workflow 与本地运行均通过同一份 `requirements.txt` 安装依�
   - `test_mvsv_merge_order`：验证"后采集覆盖"。
   - `test_bjt_day_boundary`：UTC 15:59:59 与 16:00:00 落不同日。
   - `test_idempotent_latest`：同输入跑两次，Latest 字节级一致。
-- **集成**：构造 `tests/fixtures/SecuQuote/{code}/` 多文件场景，跑全链路，断言 `Latest`、`Day`、月归档行数与 ts 范围。
+- **集成**：构造 `tests/fixtures/SecuQuote/{code}/` 多文件场景，跑全链路，断言 `Latest`、`Day`、月归档行数与 ts 范围，以及月内日文件缺失时仍聚合并写入缺失日期备注。
 - **回归**：使用仓库内真实样例（如 `Data/Finv/SecuQuote/GCMain/` 下现有 mvsv）做只读试跑，打印 dry-run 报告。
 
 ---
