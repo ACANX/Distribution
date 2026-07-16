@@ -1,0 +1,15 @@
+{
+  "ts": 1784164011,
+  "dt": "2026-07-16 09:06:51 UTC",
+  "state_backend": "dynamodb",
+  "cache_hit": true,
+  "backend_read_attempted": false,
+  "backend_read_success": false,
+  "local_write_success": true,
+  "backend_write_success": true,
+  "selected_code": "GDX",
+  "reason": "force",
+  "reason_detail": "强制采集 (超过72小时未检查) - 距上次检查72.1小时",
+  "poll_success": true,
+  "errors": []
+}
