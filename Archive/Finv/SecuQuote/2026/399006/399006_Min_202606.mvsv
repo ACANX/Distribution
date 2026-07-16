@@ -4,7 +4,7 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 3615
-# 采集时间 : "2026-07-16 11:40:26"
+# 采集时间 : "2026-07-16 12:58:27"
 # 证券代码 : 399006
 # 市场 : cny
 # 备注 : "汇总: c=4019934.1|h=4061684.4|l=3812655.2|cnt=1205; 月归档缺失交易日: 20260601, 20260602, 20260603, 20260604, 20260605, 20260608"
@@ -14,7 +14,7 @@
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 3615
-# FetchTime : "2026-07-16 11:40:26"
+# FetchTime : "2026-07-16 12:58:27"
 # SecuCode : 399006
 # Market : cny
 # Remark : "汇总: c=4019934.1|h=4061684.4|l=3812655.2|cnt=1205; 月归档缺失交易日: 20260601, 20260602, 20260603, 20260604, 20260605, 20260608"
