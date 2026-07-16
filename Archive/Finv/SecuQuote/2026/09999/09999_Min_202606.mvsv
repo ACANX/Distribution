@@ -4,7 +4,7 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 4965
-# 采集时间 : "2026-07-16 11:40:17"
+# 采集时间 : "2026-07-16 12:58:21"
 # 证券代码 : 09999
 # 市场 : cny
 # 备注 : "汇总: c=213800|h=216400|l=201400|cnt=1541; 月归档缺失交易日: 20260601, 20260602, 20260603, 20260604, 20260605, 20260608"
@@ -14,7 +14,7 @@
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 4965
-# FetchTime : "2026-07-16 11:40:17"
+# FetchTime : "2026-07-16 12:58:21"
 # SecuCode : 09999
 # Market : cny
 # Remark : "汇总: c=213800|h=216400|l=201400|cnt=1541; 月归档缺失交易日: 20260601, 20260602, 20260603, 20260604, 20260605, 20260608"
