@@ -1,0 +1,15 @@
+{
+  "ts": 1784201511,
+  "dt": "2026-07-16 19:31:51 UTC",
+  "state_backend": "dynamodb",
+  "cache_hit": true,
+  "backend_read_attempted": false,
+  "backend_read_success": false,
+  "local_write_success": true,
+  "backend_write_success": true,
+  "selected_code": "NVDA",
+  "reason": "score",
+  "reason_detail": "收益最大 - 距上次新数据38.6小时, 市场时段活跃(权重10.0), 基础权重高(x25), 无新数据5次, 惩罚x32",
+  "poll_success": true,
+  "errors": []
+}
