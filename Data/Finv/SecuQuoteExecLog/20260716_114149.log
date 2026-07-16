@@ -1,0 +1,15 @@
+{
+  "ts": 1784173309,
+  "dt": "2026-07-16 11:41:49 UTC",
+  "state_backend": "dynamodb",
+  "cache_hit": true,
+  "backend_read_attempted": false,
+  "backend_read_success": false,
+  "local_write_success": true,
+  "backend_write_success": true,
+  "selected_code": "HTI",
+  "reason": "score",
+  "reason_detail": "收益最大 - 距上次新数据1.2小时, 市场时段活跃(权重10.0), 基础权重高(x73)",
+  "poll_success": true,
+  "errors": []
+}
