@@ -2,7 +2,7 @@ RepoRoot: .
 DataRel: Data/Finv/SecuQuote
 ArchiveRel: Archive/Finv/SecuQuote
 Codes: []
-LatestWindowDays: 20
+LatestWindowDays: 22
 DailyArchiveAfterDays: 10
 MonthlyCron: '0 2 15-21 * 1'
 MonthlyDeleteLagMonths: 2
