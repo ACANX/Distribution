@@ -4,7 +4,7 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 5999
-# 采集时间 : "2026-07-16 11:40:44"
+# 采集时间 : "2026-07-16 12:58:43"
 # 证券代码 : SPCX
 # 市场 : usd
 # 备注 : "汇总: c=148300|h=153440|l=132280.1|cnt=1796; 月归档缺失交易日: 20260601, 20260602, 20260603, 20260604, 20260605"
@@ -14,7 +14,7 @@
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 5999
-# FetchTime : "2026-07-16 11:40:44"
+# FetchTime : "2026-07-16 12:58:43"
 # SecuCode : SPCX
 # Market : usd
 # Remark : "汇总: c=148300|h=153440|l=132280.1|cnt=1796; 月归档缺失交易日: 20260601, 20260602, 20260603, 20260604, 20260605"
