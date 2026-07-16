@@ -4,17 +4,17 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 241
-# 采集时间 : "2026-07-16 01:39:58"
+# 采集时间 : "2026-07-17 01:41:09"
 # 证券代码 : 399006
 # 市场 : cny
-# 备注 : "汇总: c=4019934.1|h=4061684.4|l=3812655.2|cnt=1205"
+# 备注 : "汇总: c=4018174.4|h=4060533.2|l=3674609.8|cnt=1146"
 # Title : 399006 Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 241
-# FetchTime : "2026-07-16 01:39:58"
+# FetchTime : "2026-07-17 01:41:09"
 # SecuCode : 399006
 # Market : cny
 
