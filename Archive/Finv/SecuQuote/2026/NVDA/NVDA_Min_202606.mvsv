@@ -4,20 +4,20 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 5999
-# 采集时间 : "2026-07-17 13:12:27"
+# 采集时间 : "2026-07-18 12:47:32"
 # 证券代码 : NVDA
 # 市场 : usd
-# 备注 : "汇总: c=202780|h=213350|l=203190|cnt=1806; 月归档缺失交易日: 20260601, 20260602, 20260603, 20260604, 20260605"
+# 备注 : "汇总: c=202780|h=213350|l=203190|cnt=1950; 月归档缺失交易日: 20260601, 20260602, 20260603, 20260604, 20260605"
 # Title : NVDA Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 5999
-# FetchTime : "2026-07-17 13:12:27"
+# FetchTime : "2026-07-18 12:47:32"
 # SecuCode : NVDA
 # Market : usd
-# Remark : "汇总: c=202780|h=213350|l=203190|cnt=1806; 月归档缺失交易日: 20260601, 20260602, 20260603, 20260604, 20260605"
+# Remark : "汇总: c=202780|h=213350|l=203190|cnt=1950; 月归档缺失交易日: 20260601, 20260602, 20260603, 20260604, 20260605"
 
 1780925460|20260608|213100|205.100|210.155|||3618642|759646731.073|5.055|2.46
 1780925520|20260608|213200|210.155|209.08|||1075072|225335030.132|3.98|1.94
