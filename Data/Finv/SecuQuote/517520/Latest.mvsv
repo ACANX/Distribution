@@ -3,18 +3,18 @@
 # 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# 计数 : 1683
-# 采集时间 : "2026-07-21 14:57:35"
+# 计数 : 1687
+# 采集时间 : "2026-07-21 16:52:35"
 # 证券代码 : 517520
 # 市场 : cny
-# 备注 : "汇总: c=1736|h=1754|l=1600|cnt=1201"
+# 备注 : "汇总: c=1736|h=1754|l=1600|cnt=1205"
 # Title : 517520 Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# Count : 1683
-# FetchTime : "2026-07-21 14:57:35"
+# Count : 1687
+# FetchTime : "2026-07-21 16:52:35"
 # SecuCode : 517520
 # Market : cny
 
@@ -1701,3 +1701,7 @@
 1784616840|20260721|145400|1.753|1.754|||931203|1632822|0.105|6.37
 1784616900|20260721|145500|1.754|1.753|||482205|845498|0.104|6.31
 1784616960|20260721|145600|1.753|1.752|||992300|1739401|0.103|6.25
+1784617020|20260721|145700|1.752|1.754|||1151500|2018650|0.105|6.37
+1784617080|20260721|145800|1.754|1.754|||0|0|0.105|6.37
+1784617140|20260721|145900|1.754|1.754|||0|0|0.105|6.37
+1784617200|20260721|150000|1.754|1.754|||3219900|5647705.2|0.105|6.37
