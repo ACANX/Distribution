@@ -4,21 +4,21 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 1079
-# 采集时间 : "2026-07-20 01:16:56"
+# 采集时间 : "2026-07-22 01:46:44"
 # 证券代码 : GCMain
 # 市场 : usd
-# 备注 : "汇总: c=4128900|h=4106500|l=3965600|cnt=6900"
+# 备注 : "汇总: c=4058300|h=4087400|l=3965600|cnt=6691"
 # Title : GCMain Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 1079
-# FetchTime : "2026-07-20 01:16:56"
+# FetchTime : "2026-07-22 01:46:44"
 # SecuCode : GCMain
 # Market : usd
 
-1782684060|20260629|060100||4093.7|||314|0|-9.3|-0.23
+1782684060|20260629|060100|4103.0|4093.7|||314|0|-9.3|-0.23
 1782684120|20260629|060200|4093.7|4088.2|||209|0|-14.8|-0.36
 1782684180|20260629|060300|4088.2|4097.7|||188|0|-5.3|-0.13
 1782684240|20260629|060400|4097.7|4092.4|||146|0|-10.6|-0.26
