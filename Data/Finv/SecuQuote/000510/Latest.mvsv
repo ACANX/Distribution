@@ -4,7 +4,7 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 4097
-# 采集时间 : "2026-07-22 16:32:53"
+# 采集时间 : "2026-07-22 19:22:34"
 # 证券代码 : 000510
 # 市场 : cny
 # 备注 : "汇总: c=18290|h=18070|l=12720|cnt=1205"
@@ -14,7 +14,7 @@
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 4097
-# FetchTime : "2026-07-22 16:32:53"
+# FetchTime : "2026-07-22 19:22:34"
 # SecuCode : 000510
 # Market : cny
 
