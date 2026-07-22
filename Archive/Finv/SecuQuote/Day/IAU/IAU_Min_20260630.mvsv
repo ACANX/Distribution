@@ -4,21 +4,21 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 390
-# 采集时间 : "2026-07-22 01:46:58"
+# 采集时间 : "2026-07-23 01:42:28"
 # 证券代码 : IAU
 # 市场 : usd
-# 备注 : "汇总: c=75250|h=77080|l=74570|cnt=1950"
+# 备注 : "汇总: c=76280|h=78320|l=74570|cnt=1776"
 # Title : IAU Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 390
-# FetchTime : "2026-07-22 01:46:58"
+# FetchTime : "2026-07-23 01:42:28"
 # SecuCode : IAU
 # Market : usd
 
-1782748800|20260630|000000|75.725|75.73|||6816|516165.375|-0.83|-1.08
+1782748800|20260630|000000|76.56|75.73|||6816|516165.375|-0.83|-1.08
 1782748860|20260630|000100|75.73|75.7013|||8011|606472.791|-0.8587|-1.12
 1782748920|20260630|000200|75.7013|75.725|||6713|508328.64|-0.835|-1.09
 1782748980|20260630|000300|75.725|75.7441|||5275|399446.1|-0.8159|-1.07
