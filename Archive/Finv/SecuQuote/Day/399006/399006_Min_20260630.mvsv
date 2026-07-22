@@ -4,21 +4,21 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 241
-# 采集时间 : "2026-07-22 01:46:38"
+# 采集时间 : "2026-07-23 01:42:11"
 # 证券代码 : 399006
 # 市场 : cny
-# 备注 : "汇总: c=3851137.2|h=3905215.7|l=3340773.5|cnt=1205"
+# 备注 : "汇总: c=3804703.8|h=3792111.1|l=3340773.5|cnt=1205"
 # Title : 399006 Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 241
-# FetchTime : "2026-07-22 01:46:38"
+# FetchTime : "2026-07-23 01:42:11"
 # SecuCode : 399006
 # Market : cny
 
-1782783000|20260630|093000||4217.6332|||139628108|5733515382.6|0.9347|0.02
+1782783000|20260630|093000|4216.6985|4217.6332|||139628108|5733515382.6|0.9347|0.02
 1782783060|20260630|093100|4217.6332|4225.3321|||610373254|22687294485.02|8.6336|0.20
 1782783120|20260630|093200|4225.3321|4227.1809|||501651122|19088658199.8|10.4824|0.25
 1782783180|20260630|093300|4227.1809|4218.739|||406042527|15604136230.96|2.0405|0.05
