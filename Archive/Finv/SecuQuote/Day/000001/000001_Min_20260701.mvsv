@@ -4,21 +4,21 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 241
-# 采集时间 : "2026-07-23 01:41:55"
+# 采集时间 : "2026-07-24 01:46:26"
 # 证券代码 : 000001
 # 市场 : cny
-# 备注 : "汇总: c=10840|h=11130|l=10720|cnt=1205"
+# 备注 : "汇总: c=10770|h=11130|l=10730|cnt=1205"
 # Title : 000001 Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 241
-# FetchTime : "2026-07-23 01:41:55"
+# FetchTime : "2026-07-24 01:46:26"
 # SecuCode : 000001
 # Market : cny
 
-1782869400|20260701|093000||10.05|||703600|7071180|0|0.00
+1782869400|20260701|093000|10.05|10.05|||703600|7071180|0|0.00
 1782869460|20260701|093100|10.05|10.01|||2516700|25227314|-0.04|-0.40
 1782869520|20260701|093200|10.01|10.04|||757900|7596423|-0.01|-0.10
 1782869580|20260701|093300|10.04|10.04|||868800|8717251|-0.01|-0.10
