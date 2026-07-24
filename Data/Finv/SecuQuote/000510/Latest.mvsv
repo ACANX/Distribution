@@ -3,18 +3,18 @@
 # 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# 计数 : 3856
-# 采集时间 : "2026-07-24 03:47:31"
+# 计数 : 3858
+# 采集时间 : "2026-07-24 09:47:39"
 # 证券代码 : 000510
 # 市场 : cny
-# 备注 : "汇总: c=17090|h=17050|l=12720|cnt=1205"
+# 备注 : "汇总: c=15650|h=16520|l=12720|cnt=966"
 # Title : 000510 Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# Count : 3856
-# FetchTime : "2026-07-24 03:47:31"
+# Count : 3858
+# FetchTime : "2026-07-24 09:47:39"
 # SecuCode : 000510
 # Market : cny
 
@@ -3874,3 +3874,5 @@
 1784789880|20260723|145800|15.57|15.58|||4900|76293|0.12|0.78
 1784789940|20260723|145900|15.58|15.58|||0|0|0.12|0.78
 1784790000|20260723|150000|15.58|15.51|||421300|6534363|0.05|0.32
+1784856600|20260724|093000||15.04|||356500|5361760|-0.47|-3.03
+1784856660|20260724|093100|15.04|15.15|||889532|13435757.36|-0.36|-2.32
