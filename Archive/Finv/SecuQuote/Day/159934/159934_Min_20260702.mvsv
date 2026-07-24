@@ -4,21 +4,21 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 241
-# 采集时间 : "2026-07-24 01:46:36"
+# 采集时间 : "2026-07-25 01:53:49"
 # 证券代码 : 159934
 # 市场 : cny
-# 备注 : "汇总: c=8734|h=8996|l=8628|cnt=1205"
+# 备注 : "汇总: c=8680|h=8996|l=8673|cnt=1136"
 # Title : 159934 Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 241
-# FetchTime : "2026-07-24 01:46:36"
+# FetchTime : "2026-07-25 01:53:49"
 # SecuCode : 159934
 # Market : cny
 
-1782955800|20260702|093000||8.796|||363062|3193493.352|0.154|1.78
+1782955800|20260702|093000|8.642|8.796|||363062|3193493.352|0.154|1.78
 1782955860|20260702|093100|8.796|8.799|||2602941|22904002.011|0.157|1.82
 1782955920|20260702|093200|8.799|8.8|||989093|8703774.433|0.158|1.83
 1782955980|20260702|093300|8.8|8.793|||734400|6461362|0.151|1.75
