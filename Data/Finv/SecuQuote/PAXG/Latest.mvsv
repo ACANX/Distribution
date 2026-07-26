@@ -3,18 +3,18 @@
 # 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# 计数 : 32674
-# 采集时间 : "2026-07-26 16:57:41"
+# 计数 : 32679
+# 采集时间 : "2026-07-26 17:02:34"
 # 证券代码 : PAXG
 # 市场 : crypto
-# 备注 : "汇总: c=4071450|h=4156440|l=4017510|cnt=6352"
+# 备注 : "汇总: c=4071450|h=4156440|l=4017510|cnt=6357"
 # Title : PAXG Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# Count : 32674
-# FetchTime : "2026-07-26 16:57:41"
+# Count : 32679
+# FetchTime : "2026-07-26 17:02:34"
 # SecuCode : PAXG
 # Market : crypto
 
@@ -32692,3 +32692,8 @@
 1785056040|20260726|165400|4052.95|4052.95|||0|0|0.44|0.01
 1785056100|20260726|165500|4052.95|4052.96|||0|0|0.45|0.01
 1785056160|20260726|165600|4052.96|4052.96|||0|0|0.45|0.01
+1785056220|20260726|165700|4052.96|4052.96|||0|0|0.45|0.01
+1785056280|20260726|165800|4052.96|4052.96|||0|0|0.45|0.01
+1785056340|20260726|165900|4052.96|4052.96|||0|0|0.45|0.01
+1785056400|20260726|170000|4052.96|4052.96|||0|0|0.45|0.01
+1785056460|20260726|170100|4052.96|4052.96|||0|0|0.45|0.01
