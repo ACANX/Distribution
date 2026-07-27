@@ -3,18 +3,18 @@
 # 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# 计数 : 2531
-# 采集时间 : "2026-07-27 12:02:46"
+# 计数 : 2537
+# 采集时间 : "2026-07-27 13:22:42"
 # 证券代码 : 517400
 # 市场 : cny
-# 备注 : "汇总: c=1301|h=1520|l=1313|cnt=1085"
+# 备注 : "汇总: c=1301|h=1520|l=1313|cnt=1091"
 # Title : 517400 Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# Count : 2531
-# FetchTime : "2026-07-27 12:02:46"
+# Count : 2537
+# FetchTime : "2026-07-27 13:22:42"
 # SecuCode : 517400
 # Market : cny
 
@@ -2549,3 +2549,9 @@
 1785122880|20260727|112800|1.423|1.425|||265700|378111|0.014|0.99
 1785122940|20260727|112900|1.425|1.424|||24500|34888|0.013|0.92
 1785123000|20260727|113000|1.424|1.424|||0|0|0.013|0.92
+1785128460|20260727|130100||1.423|||81500|116063|0.012|0.85
+1785128520|20260727|130200|1.423|1.425|||94200|134156|0.014|0.99
+1785128580|20260727|130300|1.425|1.426|||100|143|0.015|1.06
+1785128640|20260727|130400|1.426|1.426|||27100|38618|0.015|1.06
+1785128700|20260727|130500|1.426|1.423|||226900|323286|0.012|0.85
+1785128760|20260727|130600|1.423|1.423|||105200|149705|0.012|0.85
