@@ -1,0 +1,15 @@
+{
+  "ts": 1785243111,
+  "dt": "2026-07-28 20:51:51 UTC",
+  "state_backend": "dynamodb",
+  "cache_hit": false,
+  "backend_read_attempted": true,
+  "backend_read_success": true,
+  "local_write_success": true,
+  "backend_write_success": true,
+  "selected_code": "HSIII",
+  "reason": "score",
+  "reason_detail": "收益最大 - 距上次新数据3.8小时, 基础权重高(x74)",
+  "poll_success": true,
+  "errors": []
+}
