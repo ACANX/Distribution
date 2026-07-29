@@ -4,21 +4,21 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 3856
-# 采集时间 : "2026-07-29 01:17:41"
+# 采集时间 : "2026-07-29 09:37:49"
 # 证券代码 : 000985
 # 市场 : cny
-# 备注 : "汇总: c=13760|h=14240|l=13460|cnt=1205"
+# 备注 : "汇总: c=13580|h=14240|l=13570|cnt=964"
 # Title : 000985 Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 3856
-# FetchTime : "2026-07-29 01:17:41"
+# FetchTime : "2026-07-29 09:37:49"
 # SecuCode : 000985
 # Market : cny
 
-1783387800|20260707|093000||14.78|||3400|50252|-0.01|-0.07
+1783387800|20260707|093000|14.79|14.78|||3400|50252|-0.01|-0.07
 1783387860|20260707|093100|14.78|14.77|||21100|312370|-0.02|-0.14
 1783387920|20260707|093200|14.77|14.67|||27300|401762|-0.12|-0.81
 1783387980|20260707|093300|14.67|14.65|||38700|566219|-0.14|-0.95
