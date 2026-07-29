@@ -4,21 +4,21 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 390
-# 采集时间 : "2026-07-29 01:46:45"
+# 采集时间 : "2026-07-30 01:40:02"
 # 证券代码 : NVDA
 # 市场 : usd
-# 备注 : "汇总: c=203280|h=214294|l=195480|cnt=1950"
+# 备注 : "汇总: c=207290|h=214294|l=192920|cnt=1950"
 # Title : NVDA Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 390
-# FetchTime : "2026-07-29 01:46:45"
+# FetchTime : "2026-07-30 01:40:02"
 # SecuCode : NVDA
 # Market : usd
 
-1783353600|20260707|000000|196.2965|196.4|||132277|25967934.56|1.57|0.81
+1783353600|20260707|000000|194.83|196.4|||132277|25967934.56|1.57|0.81
 1783353660|20260707|000100|196.4|196.6204|||407517|80050664.562|1.7904|0.92
 1783353720|20260707|000200|196.6204|196.48|||163516|32144682.481|1.65|0.85
 1783353780|20260707|000300|196.48|196.39|||152380|29939602.366|1.56|0.80
