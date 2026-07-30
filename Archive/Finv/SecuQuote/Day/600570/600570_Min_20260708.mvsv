@@ -4,21 +4,21 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 241
-# 采集时间 : "2026-07-30 01:39:49"
+# 采集时间 : "2026-07-31 01:50:08"
 # 证券代码 : 600570
 # 市场 : cny
-# 备注 : "汇总: c=21520|h=21730|l=20600|cnt=1066"
+# 备注 : "汇总: c=21510|h=22390|l=20600|cnt=1085"
 # Title : 600570 Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 241
-# FetchTime : "2026-07-30 01:39:49"
+# FetchTime : "2026-07-31 01:50:08"
 # SecuCode : 600570
 # Market : cny
 
-1783474200|20260708|093000||20.29|||64000|1298560|0.03|0.15
+1783474200|20260708|093000|20.26|20.29|||64000|1298560|0.03|0.15
 1783474260|20260708|093100|20.29|20.25|||452100|9173182|-0.01|-0.05
 1783474320|20260708|093200|20.25|20.28|||232300|4706611|0.02|0.10
 1783474380|20260708|093300|20.28|20.28|||121100|2454843|0.02|0.10
