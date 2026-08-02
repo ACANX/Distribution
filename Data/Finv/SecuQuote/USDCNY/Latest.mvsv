@@ -4,7 +4,7 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 21585
-# 采集时间 : "2026-08-03 01:01:17"
+# 采集时间 : "2026-08-03 03:02:46"
 # 证券代码 : USDCNY
 # 市场 : usd
 # 备注 : "汇总: c=6775.95|h=6775.95|l=6747.2|cnt=7195"
@@ -14,11 +14,11 @@
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 21585
-# FetchTime : "2026-08-03 01:01:17"
+# FetchTime : "2026-08-03 03:02:46"
 # SecuCode : USDCNY
 # Market : usd
 
-1783890060|20260713|050100||6.7766|||0|0|0|0.00
+1783890060|20260713|050100|6.7766|6.7766|||0|0|0|0.00
 1783890120|20260713|050200|6.7766|6.7766|||0|0|0|0.00
 1783890180|20260713|050300|6.7766|6.7766|||0|0|0|0.00
 1783890240|20260713|050400|6.7766|6.7766|||0|0|0|0.00
