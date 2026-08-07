@@ -1,0 +1,1 @@
+[{"type": "api", "method": "DELETE", "path": "/API/V1/Meta/CMS/Bookmark/Category/Delete", "status_code": 200, "response_time_ms": 2205, "ts": 1777967583307, "session": "0cce7f22-6eac-4d13-b895-d8bf96f89a52", "uid": "agent", "uin": 100001}]
