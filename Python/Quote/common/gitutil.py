@@ -46,6 +46,18 @@ def rm(path: str, cwd: Optional[str] = None) -> None:
     _run(["rm", path], cwd)
 
 
+def rm_many(paths, cwd: Optional[str] = None, batch_size: int = 800) -> None:
+    """git rm 批量删除多个文件（分批执行，避免命令行过长）。
+
+    Args:
+        paths: 待删除文件路径列表
+        batch_size: 每批文件数，防止单条命令参数超长（Windows 命令行约 32KB）
+    """
+    paths = [str(p) for p in paths]
+    for i in range(0, len(paths), batch_size):
+        _run(["rm", "--"] + paths[i:i + batch_size], cwd)
+
+
 def _get_current_branch(cwd=None) -> str:
     """Detect current git branch name."""
     result = _run(["rev-parse", "--abbrev-ref", "HEAD"], cwd)

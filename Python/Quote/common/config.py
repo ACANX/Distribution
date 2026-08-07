@@ -20,11 +20,14 @@ class Config:
     repo_root: Path
     data_dir: Path               # 原始采集数据根目录
     archive_dir: Path            # 归档根目录
+    exec_log_data_dir: Path      # SecuQuoteExecLog 原始数据目录
+    exec_log_archive_dir: Path   # SecuQuoteExecLog 归档目录
     codes: List[str] = field(default_factory=list)
     latest_window_days: int = 20
     daily_archive_after_days: int = 10
     monthly_delete_lag_months: int = 2
     cleanup_raw_after_aggregate: bool = True
+    cleanup_exec_log_raw_after_archive: bool = True
     log_dir: Path = field(default_factory=lambda: Path('Python/Quote/logs'))
     log_retention_days: int = 14
     git_push_retries: int = 1
@@ -75,11 +78,14 @@ def load_config() -> Config:
         repo_root=repo_root,
         data_dir=(repo_root / raw.get('DataRel', 'Data/Finv/SecuQuote')).resolve(),
         archive_dir=(repo_root / raw.get('ArchiveRel', 'Archive/Finv/SecuQuote')).resolve(),
+        exec_log_data_dir=(repo_root / raw.get('ExecLogDataRel', 'Data/Finv/SecuQuoteExecLog')).resolve(),
+        exec_log_archive_dir=(repo_root / raw.get('ExecLogArchiveRel', 'Archive/Finv/SecuQuoteExecLog')).resolve(),
         codes=codes,
         latest_window_days=int(raw.get('LatestWindowDays', 20)),
         daily_archive_after_days=int(raw.get('DailyArchiveAfterDays', 10)),
         monthly_delete_lag_months=int(raw.get('MonthlyDeleteLagMonths', 2)),
         cleanup_raw_after_aggregate=bool(raw.get('CleanupRawAfterAggregate', True)),
+        cleanup_exec_log_raw_after_archive=bool(raw.get('CleanupExecLogRawAfterArchive', True)),
         log_dir=repo_root / raw.get('LogDir', 'Python/Quote/logs'),
         log_retention_days=int(raw.get('LogRetentionDays', 14)),
         git_push_retries=int(raw.get('GitPushRetries', 1)),
