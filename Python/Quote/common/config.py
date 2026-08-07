@@ -27,6 +27,7 @@ class Config:
     daily_archive_after_days: int = 10
     monthly_delete_lag_months: int = 2
     cleanup_raw_after_aggregate: bool = True
+    cleanup_exec_log_raw_after_archive: bool = True
     log_dir: Path = field(default_factory=lambda: Path('Python/Quote/logs'))
     log_retention_days: int = 14
     git_push_retries: int = 1
@@ -84,6 +85,7 @@ def load_config() -> Config:
         daily_archive_after_days=int(raw.get('DailyArchiveAfterDays', 10)),
         monthly_delete_lag_months=int(raw.get('MonthlyDeleteLagMonths', 2)),
         cleanup_raw_after_aggregate=bool(raw.get('CleanupRawAfterAggregate', True)),
+        cleanup_exec_log_raw_after_archive=bool(raw.get('CleanupExecLogRawAfterArchive', True)),
         log_dir=repo_root / raw.get('LogDir', 'Python/Quote/logs'),
         log_retention_days=int(raw.get('LogRetentionDays', 14)),
         git_push_retries=int(raw.get('GitPushRetries', 1)),
