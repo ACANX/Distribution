@@ -12,13 +12,13 @@
     输出可被 workflow 消费的结果信息。
 
 目录与命名:
-    默认目标: Data/Finv/News/FlashEastMoney/2026/20260806.jsonl
-    其中 Data 为 base_dir(仓库相对路径), year 为前一天年份。
+    默认目标: Archive/Finv/News/FlashEastMoney/2026/20260806.jsonl
+    其中 Archive 为 base_dir(仓库相对路径), year 为前一天年份。
 
 配置来源(优先级从高到低):
     1. 环境变量 MAIN_BASE_DIR / MAIN_SLEEP_BETWEEN
     2. Config.json 中的 BaseDir / SleepBetween(大驼峰命名, 大小写不敏感)
-    3. 内置默认值: base_dir='Data', sleep_between=0.3
+    3. 内置默认值: base_dir='Archive', sleep_between=0.3
 
 用法:
     python3 Main.py [--config Config.json] [--date YYYY-MM-DD]
