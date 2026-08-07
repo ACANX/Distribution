@@ -31,7 +31,7 @@ jobs:
           ref: news
           fetch-depth: 0
 
-      - name: 设置 Python
+      - name: 设置Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.14"
