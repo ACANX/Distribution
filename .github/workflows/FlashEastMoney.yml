@@ -36,7 +36,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: 运行采集脚本
+      - name: 运行脚本
         shell: bash
         run: |
           # 从仓库根运行 Python/Main.py(Main.py 内部已把 Python/ 加入 sys.path);
