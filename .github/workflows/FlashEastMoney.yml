@@ -36,7 +36,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: 运行采集脚本
+      - name: 运行脚本
         shell: bash
         run: |
           # 从仓库根运行 Python/Main.py(Main.py 内部已把 Python/ 加入 sys.path);
@@ -54,8 +54,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           # 数据目录
-          git add "Data/Finv/FlashEastMoney/**"
-          # 固定推送到 FQ 分支
+          git add "Archive/Finv/FlashEastMoney/**"
+          # 固定推送到 news 分支
           if git diff --cached --quiet; then
             echo "没有新增数据, 跳过提交"
           else
