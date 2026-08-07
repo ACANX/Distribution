@@ -1,0 +1,64 @@
+# 东方财富快讯, 保存为 jsonl 并自动提交推送
+# 触发方式:
+#   - 每天 UTC 16:45(北京时间 00:45)自动运行, 采集"前一天"快讯
+#   - 手动触发: Actions 页 Run workflow, 可指定采集日期
+# 运行分支: 固定使用 news 分支(定时与手动一致), 脚本从 news 检出, 提交推回 FQ
+name: FlashEastMoneyDaily
+
+on:
+  schedule:
+    # 北京时间 00:45 (UTC 16:45)。尽量避开整点, 减少 GitHub 定时任务拥堵
+    - cron: "45 16 * * *"
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: "采集日期 YYYY-MM-DD(留空=前一天, 北京时间)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  fetch-and-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出仓库(news 分支)
+        uses: actions/checkout@v5
+        with:
+          ref: news
+          fetch-depth: 0
+
+      - name: 设置Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: 运行采集脚本
+        shell: bash
+        run: |
+          # 从仓库根运行 Python/Main.py(Main.py 内部已把 Python/ 加入 sys.path);
+          # 数据保存在仓库根 Data/Finv/FlashEastMoney/<year>/<yyyymmdd>.jsonl,
+          # 便于下一步 git add 直接匹配。
+          # 手动触发时可用 target_date 指定日期; 留空则 Main.py 默认取前一天
+          args=()
+          args+=(--config Python/Flash/Config.json --print --log)
+          if [ -n "${{ github.event.inputs.target_date }}" ]; then
+            args+=(--date "${{ github.event.inputs.target_date }}")
+          fi
+          python3 Python/Flash/MainEastMoney.py "${args[@]}"
+      - name: 提交并推送数据(到 news)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # 数据目录
+          git add "Data/Finv/FlashEastMoney/**"
+          # 固定推送到 FQ 分支
+          if git diff --cached --quiet; then
+            echo "没有新增数据, 跳过提交"
+          else
+            git commit -m "chore(data): 更新FlashEastMoneyDay数据 $(date +%Y-%m-%d)"
+            git push origin FQ
+          fi
