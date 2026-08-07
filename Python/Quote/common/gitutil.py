@@ -4,6 +4,7 @@ Git 操作封装
 使用 subprocess，支持 add/commit/rm/push，含 push_with_retry 增量发布。
 """
 
+import os
 import subprocess
 from pathlib import Path
 from typing import List, Optional
@@ -46,16 +47,24 @@ def rm(path: str, cwd: Optional[str] = None) -> None:
     _run(["rm", path], cwd)
 
 
-def rm_many(paths, cwd: Optional[str] = None, batch_size: int = 800) -> None:
+def rm_many(paths, cwd: Optional[str] = None, batch_size: int = 400) -> None:
     """git rm 批量删除多个文件（分批执行，避免命令行过长）。
 
     Args:
-        paths: 待删除文件路径列表
+        paths: 待删除文件路径列表（绝对路径，会转换为相对 cwd 以缩短命令行）
         batch_size: 每批文件数，防止单条命令参数超长（Windows 命令行约 32KB）
     """
-    paths = [str(p) for p in paths]
-    for i in range(0, len(paths), batch_size):
-        _run(["rm", "--"] + paths[i:i + batch_size], cwd)
+    base = Path(cwd).resolve() if cwd else Path.cwd().resolve()
+    rel = []
+    for p in paths:
+        ap = str(Path(p).resolve())
+        try:
+            rel.append(os.path.relpath(ap, base))
+        except ValueError:
+            # 不同盘符无法取相对路径，退回绝对路径
+            rel.append(ap)
+    for i in range(0, len(rel), batch_size):
+        _run(["rm", "--"] + rel[i:i + batch_size], cwd)
 
 
 def _get_current_branch(cwd=None) -> str:
