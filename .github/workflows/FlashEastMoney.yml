@@ -54,7 +54,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           # 数据目录
-          git add "Data/Finv/FlashEastMoney/**"
+          git add "Archive/Finv/FlashEastMoney/**"
           # 固定推送到 FQ 分支
           if git diff --cached --quiet; then
             echo "没有新增数据, 跳过提交"
