@@ -47,7 +47,7 @@ from FlashEastMoney import getDayNews, writeJsonl  # noqa: E402
 
 # 内置默认配置
 DEFAULT_CONFIG_FILE = "Config.json"
-DEFAULT_BASE_DIR = "Data"
+DEFAULT_BASE_DIR = "Archive"
 DEFAULT_SLEEP = 0.3
 
 
