@@ -48,7 +48,7 @@ jobs:
           if [ -n "${{ github.event.inputs.target_date }}" ]; then
             args+=(--date "${{ github.event.inputs.target_date }}")
           fi
-          python3 Python/Flash/MainEastMoney.py "${args[@]}"
+          python3 Python/Flash/News/MainEastMoney.py "${args[@]}"
       - name: 提交并推送数据(到 news)
         run: |
           git config user.name "github-actions[bot]"
