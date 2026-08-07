@@ -48,13 +48,13 @@ jobs:
           if [ -n "${{ github.event.inputs.target_date }}" ]; then
             args+=(--date "${{ github.event.inputs.target_date }}")
           fi
-          python3 Python/Flash/News/MainEastMoney.py "${args[@]}"
+          python3 Python/Flash/MainEastMoney.py "${args[@]}"
       - name: 提交并推送数据(到 news)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           # 数据目录
-          git add "Archive/Finv/FlashEastMoney/**"
+          git add "Archive/Finv/News/FlashEastMoney/**"
           # 固定推送到 FQ 分支
           if git diff --cached --quiet; then
             echo "没有新增数据, 跳过提交"
