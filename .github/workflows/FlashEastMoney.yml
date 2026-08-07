@@ -55,10 +55,10 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           # 数据目录
           git add "Archive/Finv/News/FlashEastMoney/**"
-          # 固定推送到 FQ 分支
+          # 固定推送到 news 分支
           if git diff --cached --quiet; then
             echo "没有新增数据, 跳过提交"
           else
             git commit -m "chore(data): 更新FlashEastMoneyDay数据 $(date +%Y-%m-%d)"
-            git push origin FQ
+            git push origin news
           fi
