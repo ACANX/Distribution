@@ -1,0 +1,58 @@
+# 富途快讯 JSON 归档转 JSONL 并自动提交推送
+# 触发方式:
+#   - 每天 UTC 19:45(北京时间 03:45)自动运行, 将 Data/Finv/News/FlashFutu/
+#     下按日归档的 JSON 数组文件增量转换为 JSONL, 保存到 Archive/Finv/News/FlashFutu/
+#   - 手动触发: Actions 页 Run workflow
+# 运行分支: 检出 news 分支(脚本与源数据均在 news), 转换结果提交并推回 news
+name: FlashFutuConvert
+
+on:
+  schedule:
+    # 北京时间 03:45 (UTC 19:45)。尽量避开整点, 减少 GitHub 定时任务拥堵
+    - cron: "45 19 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  convert-and-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出仓库(news 分支)
+        uses: actions/checkout@v5
+        with:
+          ref: news
+          fetch-depth: 0
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: 运行转换脚本
+        shell: bash
+        run: |
+          # 从仓库根运行脚本; 将 Data/Finv/News/FlashFutu/<year>/<yyyymmdd>.json
+          # 转换为 JSONL 写入 Archive/Finv/News/FlashFutu/<year>/<yyyymmdd>.jsonl,
+          # 便于下一步 git add 直接匹配。
+          # 语法错误的 JSON 文件自动跳过; 目标已存在时按 id 增量合并去重。
+          # 验证期默认不删除源 JSON 文件; 流程跑通后如需启用"转换后删除 N 天前
+          # 的源 JSON", 在下方命令追加参数, 例如:
+          #   --keep-json-days 7  (仅保留最近 7 天的源 JSON, 更早的已转换源文件删除)
+          python3 Python/Flash/FlashFutuConvertJSONToJSONL.py --log
+      - name: 提交并推送数据(到 news)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # 归档目录
+          git add "Archive/Finv/News/FlashFutu/**"
+          # 固定推送到 news 分支
+          if git diff --cached --quiet; then
+            echo "没有新增数据, 跳过提交"
+          else
+            git commit -m "chore(data): 转换FlashFutu快讯JSON为JSONL $(date +%Y-%m-%d)"
+            git push origin news
+          fi
