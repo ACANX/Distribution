@@ -1,6 +1,8 @@
 RepoRoot: .
 DataRel: Data/Finv/SecuQuote
 ArchiveRel: Archive/Finv/SecuQuote
+ExecLogDataRel: Data/Finv/SecuQuoteExecLog
+ExecLogArchiveRel: Archive/Finv/SecuQuoteExecLog
 Codes: []
 LatestWindowDays: 36
 DailyArchiveAfterDays: 9
