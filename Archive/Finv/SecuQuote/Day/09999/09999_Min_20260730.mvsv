@@ -4,7 +4,7 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 331
-# 采集时间 : "2026-08-08 11:32:15"
+# 采集时间 : "2026-08-10 00:54:49"
 # 证券代码 : 09999
 # 市场 : cny
 # 备注 : "汇总: c=207800|h=210400|l=199400|cnt=1655"
@@ -14,7 +14,7 @@
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 331
-# FetchTime : "2026-08-08 11:32:15"
+# FetchTime : "2026-08-10 00:54:49"
 # SecuCode : 09999
 # Market : cny
 
