@@ -4,7 +4,7 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 28980
-# 采集时间 : "2026-08-11 05:42:13"
+# 采集时间 : "2026-08-11 05:52:15"
 # 证券代码 : XAUUSD
 # 市场 : usd
 # 备注 : "汇总: c=4055085|h=4395170|l=4043990|cnt=6900"
@@ -14,7 +14,7 @@
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 28980
-# FetchTime : "2026-08-11 05:42:13"
+# FetchTime : "2026-08-11 05:52:15"
 # SecuCode : XAUUSD
 # Market : usd
 
