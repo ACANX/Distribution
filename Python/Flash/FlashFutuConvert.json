@@ -1,5 +1,5 @@
 {
-  "BaseDir": "Archive",
+  "BaseDir": "Data",
   "ArchiveDir": "Archive",
   "KeepJsonDays": 3
 }
