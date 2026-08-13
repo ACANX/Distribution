@@ -3,18 +3,18 @@
 # 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# 计数 : 6141
-# 采集时间 : "2026-08-13 00:13:49"
+# 计数 : 6143
+# 采集时间 : "2026-08-13 09:47:18"
 # 证券代码 : 688050
 # 市场 : cny
-# 备注 : "汇总: c=41040|h=42920|l=39580|cnt=1335"
+# 备注 : "汇总: c=40140|h=42920|l=39580|cnt=1070"
 # Title : 688050 Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# Count : 6141
-# FetchTime : "2026-08-13 00:13:49"
+# Count : 6143
+# FetchTime : "2026-08-13 09:47:18"
 # SecuCode : 688050
 # Market : cny
 
@@ -6159,3 +6159,5 @@
 1786519680|20260812|152800|41.98|41.98|||0|0|0|0.00
 1786519740|20260812|152900|41.98|41.98|||0|0|0|0.00
 1786519800|20260812|153000|41.98|41.98|||0|0|0|0.00
+1786584600|20260813|093000||41.82|||3700|154734|-0.16|-0.38
+1786584660|20260813|093100|41.82|41.45|||65029|2708604|-0.53|-1.26
