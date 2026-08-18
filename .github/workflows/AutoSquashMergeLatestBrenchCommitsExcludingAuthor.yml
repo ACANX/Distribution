@@ -1,38 +1,38 @@
-name: AutoSquashMergeLatestBrenchCommitsExcludingAuthor
+name: Squash Recent Commits Excluding Author
 
 on:
   workflow_dispatch:
     inputs:
       branch:
-        description: 'Target branch name'
-        required: true
-        default: 'latest'
+        description: 'Target branch name (leave empty to use current branch)'
+        required: false
+        default: ''
       N:
         description: 'Number of recent commits to inspect'
         required: true
-        default: '20'
+        default: '5'
       excluded_author:
         description: 'Author email to exclude (exact match)'
         required: true
       commit_message:
         description: 'Commit message for the squashed commit'
         required: true
-        default: 'MergeRecentCommits'
+        default: 'Merge recent commits'
 
 jobs:
   squash:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v3
         with:
-          fetch-depth: 0          # 获取完整历史以支持变基
+          fetch-depth: 0
 
-      - name: RunSquashScript
+      - name: Run squash script
         run: |
           chmod +x ./Bash/AutoSquashMergeLatestBrenchCommitsExcludingAuthor.sh
           ./Bash/AutoSquashMergeLatestBrenchCommitsExcludingAuthor.sh "${{ github.event.inputs.branch }}" \
-                           "${{ github.event.inputs.N }}" \
-                           "${{ github.event.inputs.excluded_author }}" \
-                           "${{ github.event.inputs.commit_message }}"
+                                                                         "${{ github.event.inputs.N }}" \
+                                                                         "${{ github.event.inputs.excluded_author }}" \
+                                                                         "${{ github.event.inputs.commit_message }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
