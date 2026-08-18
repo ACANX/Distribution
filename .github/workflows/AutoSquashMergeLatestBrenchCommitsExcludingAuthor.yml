@@ -1,4 +1,4 @@
-name: Squash Recent Commits Excluding Author
+name: AutoSquashMergeLatestBrenchCommitsExcludingAuthor
 
 on:
   workflow_dispatch:
@@ -25,7 +25,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          fetch-depth: 0
+          fetch-depth: 0          # 获取完整历史以支持变基
+
+      # 强制清理工作区，确保没有未提交的更改（解决 "uncommitted changes" 错误）
+      - name: Clean working directory
+        run: git reset --hard HEAD
 
       - name: Run squash script
         run: |
