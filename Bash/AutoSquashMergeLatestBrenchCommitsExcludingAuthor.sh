@@ -6,8 +6,28 @@ N="$2"
 EXCLUDED_AUTHOR="$3"
 COMMIT_MESSAGE="$4"
 
-if [ -z "$BRANCH" ] || [ -z "$N" ] || [ -z "$EXCLUDED_AUTHOR" ] || [ -z "$COMMIT_MESSAGE" ]; then
-    echo "Usage: $0 <branch> <N> <excluded_author> <commit_message>"
+# 如果分支未指定，则使用当前分支
+if [ -z "$BRANCH" ]; then
+    BRANCH=$(git rev-parse --abbrev-ref HEAD)
+    echo "No branch specified, using current branch: $BRANCH"
+fi
+
+# 检查工作区是否干净（避免 rebase 失败）
+if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo "Error: Working directory has uncommitted changes. Please commit or stash them first."
+    exit 1
+fi
+
+# 检查分支是否存在
+if ! git show-ref --verify --quiet "refs/heads/$BRANCH"; then
+    echo "Error: Branch '$BRANCH' does not exist."
+    exit 1
+fi
+
+# 检查必要参数
+if [ -z "$N" ] || [ -z "$EXCLUDED_AUTHOR" ] || [ -z "$COMMIT_MESSAGE" ]; then
+    echo "Usage: $0 [<branch>] <N> <excluded_author> <commit_message>"
+    echo "  If <branch> is omitted, current branch is used."
     exit 1
 fi
 
