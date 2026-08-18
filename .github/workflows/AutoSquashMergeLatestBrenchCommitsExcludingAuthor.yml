@@ -30,7 +30,7 @@ jobs:
       - name: RunSquashScript
         run: |
           chmod +x ./Bash/AutoSquashMergeLatestBrenchCommitsExcludingAuthor.sh
-          ./Bash/merge.sh "${{ github.event.inputs.branch }}" \
+          ./Bash/AutoSquashMergeLatestBrenchCommitsExcludingAuthor.sh "${{ github.event.inputs.branch }}" \
                            "${{ github.event.inputs.N }}" \
                            "${{ github.event.inputs.excluded_author }}" \
                            "${{ github.event.inputs.commit_message }}"
