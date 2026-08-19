@@ -4,7 +4,7 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 10381
-# 采集时间 : "2026-08-20 05:36:12"
+# 采集时间 : "2026-08-20 06:12:27"
 # 证券代码 : IAU
 # 市场 : usd
 # 备注 : "汇总: c=82980|h=84840|l=81615|cnt=1950"
@@ -14,7 +14,7 @@
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 10381
-# FetchTime : "2026-08-20 05:36:12"
+# FetchTime : "2026-08-20 06:12:27"
 # SecuCode : IAU
 # Market : usd
 
