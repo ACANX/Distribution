@@ -4,7 +4,7 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 6748
-# 采集时间 : "2026-08-19 16:37:29"
+# 采集时间 : "2026-08-19 22:32:38"
 # 证券代码 : 517520
 # 市场 : cny
 # 备注 : "汇总: c=2075|h=2104|l=1940|cnt=1205"
@@ -14,7 +14,7 @@
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 6748
-# FetchTime : "2026-08-19 16:37:29"
+# FetchTime : "2026-08-19 22:32:38"
 # SecuCode : 517520
 # Market : cny
 
