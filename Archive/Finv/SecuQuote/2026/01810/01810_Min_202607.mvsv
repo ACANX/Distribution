@@ -4,20 +4,20 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 7282
-# 采集时间 : "2026-08-19 10:54:08"
+# 采集时间 : "2026-08-20 10:54:01"
 # 证券代码 : 01810
 # 市场 : cny
-# 备注 : "汇总: c=27060|h=27800|l=25460|cnt=1655; 月归档缺失交易日: 20260701"
+# 备注 : "汇总: c=26360|h=28060|l=25260|cnt=1655; 月归档缺失交易日: 20260701"
 # Title : 01810 Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 7282
-# FetchTime : "2026-08-19 10:54:08"
+# FetchTime : "2026-08-20 10:54:01"
 # SecuCode : 01810
 # Market : cny
-# Remark : "汇总: c=27060|h=27800|l=25460|cnt=1655; 月归档缺失交易日: 20260701"
+# Remark : "汇总: c=26360|h=28060|l=25260|cnt=1655; 月归档缺失交易日: 20260701"
 
 1782955800|20260702|093000|21.64|22.4|||6930800|155249920|0.76|3.51
 1782955860|20260702|093100|22.4|22.48|||9028200|201955910|0.84|3.88
