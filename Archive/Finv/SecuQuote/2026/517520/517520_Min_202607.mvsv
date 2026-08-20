@@ -4,20 +4,20 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 3615
-# 采集时间 : "2026-08-19 10:54:21"
+# 采集时间 : "2026-08-20 10:54:15"
 # 证券代码 : 517520
 # 市场 : cny
-# 备注 : "汇总: c=2112|h=2214|l=1940|cnt=1205; 月归档缺失交易日: 20260701, 20260702, 20260703, 20260706, 20260707, 20260708, 20260709, 20260710"
+# 备注 : "汇总: c=2075|h=2104|l=1940|cnt=1205; 月归档缺失交易日: 20260701, 20260702, 20260703, 20260706, 20260707, 20260708, 20260709, 20260710"
 # Title : 517520 Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 3615
-# FetchTime : "2026-08-19 10:54:21"
+# FetchTime : "2026-08-20 10:54:15"
 # SecuCode : 517520
 # Market : cny
-# Remark : "汇总: c=2112|h=2214|l=1940|cnt=1205; 月归档缺失交易日: 20260701, 20260702, 20260703, 20260706, 20260707, 20260708, 20260709, 20260710"
+# Remark : "汇总: c=2075|h=2104|l=1940|cnt=1205; 月归档缺失交易日: 20260701, 20260702, 20260703, 20260706, 20260707, 20260708, 20260709, 20260710"
 
 1783906200|20260713|093000|1.716|1.664|||2948800|4906803|-0.052|-3.03
 1783906260|20260713|093100|1.664|1.665|||4339800|7260828|-0.051|-2.97
