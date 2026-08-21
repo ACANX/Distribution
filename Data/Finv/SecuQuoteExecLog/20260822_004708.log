@@ -1,0 +1,15 @@
+{
+  "ts": 1787330828,
+  "dt": "2026-08-22 00:47:08 UTC",
+  "state_backend": "dynamodb",
+  "cache_hit": false,
+  "backend_read_attempted": true,
+  "backend_read_success": true,
+  "local_write_success": true,
+  "backend_write_success": true,
+  "selected_code": "USDCNY",
+  "reason": "score",
+  "reason_detail": "收益最大 - 基础权重高(x95)",
+  "poll_success": true,
+  "errors": []
+}
