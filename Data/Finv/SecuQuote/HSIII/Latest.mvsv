@@ -3,18 +3,18 @@
 # 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# 计数 : 8937
-# 采集时间 : "2026-08-21 03:42:20"
+# 计数 : 8939
+# 采集时间 : "2026-08-21 09:47:21"
 # 证券代码 : HSIII
 # 市场 : usd
-# 备注 : "汇总: c=2309850|h=2310040|l=2243090|cnt=1655"
+# 备注 : "汇总: c=2264080|h=2310040|l=2243090|cnt=1326"
 # Title : HSIII Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# Count : 8937
-# FetchTime : "2026-08-21 03:42:20"
+# Count : 8939
+# FetchTime : "2026-08-21 09:47:21"
 # SecuCode : HSIII
 # Market : usd
 
@@ -8955,3 +8955,5 @@
 1787212680|20260820|155800|2276.84|2277.41|||0|173736663|10.64|0.47
 1787212740|20260820|155900|2277.41|2276.36|||0|219779964|9.59|0.42
 1787212800|20260820|160000|2276.36|2270.26|||0|2712961858|3.49|0.15
+1787275800|20260821|093000||2278.64|||0|1217024845|8.38|0.37
+1787275860|20260821|093100|2278.64|2279.88|||0|1381996611|9.62|0.42
