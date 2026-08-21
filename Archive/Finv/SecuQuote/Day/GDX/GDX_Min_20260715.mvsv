@@ -4,21 +4,21 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 390
-# 采集时间 : "2026-08-20 00:47:56"
+# 采集时间 : "2026-08-22 00:52:22"
 # 证券代码 : GDX
 # 市场 : usd
-# 备注 : "汇总: c=90960|h=97390|l=87525|cnt=1741"
+# 备注 : "汇总: c=89970|h=103100|l=88825|cnt=1691"
 # Title : GDX Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 390
-# FetchTime : "2026-08-20 00:47:56"
+# FetchTime : "2026-08-22 00:52:22"
 # SecuCode : GDX
 # Market : usd
 
-1784044800|20260715|000000|75.16|75.14|||14515|1090569.464|1.77|2.41
+1784044800|20260715|000000|73.37|75.14|||14515|1090569.464|1.77|2.41
 1784044860|20260715|000100|75.14|75.01|||12791|960488.432|1.64|2.24
 1784044920|20260715|000200|75.01|75.01|||23127|1735264.472|1.64|2.24
 1784044980|20260715|000300|75.01|75.03|||10755|806881.762|1.66|2.26
