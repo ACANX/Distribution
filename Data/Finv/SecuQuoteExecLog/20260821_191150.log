@@ -1,0 +1,15 @@
+{
+  "ts": 1787310710,
+  "dt": "2026-08-21 19:11:50 UTC",
+  "state_backend": "dynamodb",
+  "cache_hit": true,
+  "backend_read_attempted": false,
+  "backend_read_success": false,
+  "local_write_success": true,
+  "backend_write_success": true,
+  "selected_code": "IAU",
+  "reason": "score",
+  "reason_detail": "收益最大 - 距上次新数据38.5小时, 市场时段活跃(权重10.0), 基础权重高(x61), 无新数据6次, 惩罚x64",
+  "poll_success": true,
+  "errors": []
+}
