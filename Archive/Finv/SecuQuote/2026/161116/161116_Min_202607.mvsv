@@ -4,7 +4,7 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 5543
-# 采集时间 : "2026-08-20 10:54:10"
+# 采集时间 : "2026-08-21 10:59:28"
 # 证券代码 : 161116
 # 市场 : cny
 # 备注 : "汇总: c=1626|h=1637|l=1591|cnt=1106"
@@ -14,7 +14,7 @@
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 5543
-# FetchTime : "2026-08-20 10:54:10"
+# FetchTime : "2026-08-21 10:59:28"
 # SecuCode : 161116
 # Market : cny
 # Remark : "汇总: c=1626|h=1637|l=1591|cnt=1106"
