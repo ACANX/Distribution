@@ -4,7 +4,7 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 301
-# 采集时间 : "2026-08-23 00:41:53"
+# 采集时间 : "2026-08-24 00:44:12"
 # 证券代码 : GCMain
 # 市场 : usd
 # 备注 : "汇总: c=4432000|h=4689600|l=4380700|cnt=6900"
@@ -14,11 +14,11 @@
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 301
-# FetchTime : "2026-08-23 00:41:53"
+# FetchTime : "2026-08-24 00:44:12"
 # SecuCode : GCMain
 # Market : usd
 
-1784304000|20260718|000000|4022.8|4024.1|||88|0|44.2|1.11
+1784304000|20260718|000000|3979.9|4024.1|||88|0|44.2|1.11
 1784304060|20260718|000100|4024.1|4022.9|||182|0|43|1.08
 1784304120|20260718|000200|4022.9|4017.8|||943|0|37.9|0.95
 1784304180|20260718|000300|4017.8|4019|||241|0|39.1|0.98
