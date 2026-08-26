@@ -4,21 +4,21 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 149
-# 采集时间 : "2026-08-24 00:44:26"
+# 采集时间 : "2026-08-27 01:00:54"
 # 证券代码 : SPCX
 # 市场 : usd
-# 备注 : "汇总: c=140000|h=149787.2|l=130420|cnt=1950"
+# 备注 : "汇总: c=143340|h=142630|l=130420|cnt=1950"
 # Title : SPCX Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 149
-# FetchTime : "2026-08-24 00:44:26"
+# FetchTime : "2026-08-27 01:00:54"
 # SecuCode : SPCX
 # Market : usd
 
-1784554260|20260720|213100||124.62|||1551180|193723145.215|0.63|0.51
+1784554260|20260720|213100|123.99|124.62|||1551180|193723145.215|0.63|0.51
 1784554320|20260720|213200|124.62|123.93|||223376|27779569.675|-0.06|-0.05
 1784554380|20260720|213300|123.93|124.335|||299903|37149702.231|0.345|0.28
 1784554440|20260720|213400|124.335|124.6115|||231455|28827264.888|0.6215|0.50
