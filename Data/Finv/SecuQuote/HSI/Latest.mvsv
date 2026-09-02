@@ -4,21 +4,21 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 8606
-# 采集时间 : "2026-09-02 02:27:45"
+# 采集时间 : "2026-09-02 09:17:41"
 # 证券代码 : HSI
 # 市场 : usd
-# 备注 : "汇总: c=25511100|h=25792800|l=25241600|cnt=1655"
+# 备注 : "汇总: c=25652970|h=25774870|l=25241600|cnt=1324"
 # Title : HSI Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 8606
-# FetchTime : "2026-09-02 02:27:45"
+# FetchTime : "2026-09-02 09:17:41"
 # SecuCode : HSI
 # Market : usd
 
-1785202200|20260728|093000||25271.95|||0|2694537505.304|64.77|0.26
+1785202200|20260728|093000|25207.18|25271.95|||0|2694537505.304|64.77|0.26
 1785202260|20260728|093100|25271.95|25327.05|||0|4899675029.471|119.87|0.48
 1785202320|20260728|093200|25327.05|25298.73|||0|2922458874.396|91.55|0.36
 1785202380|20260728|093300|25298.73|25262.41|||0|2365910711.558|55.23|0.22
