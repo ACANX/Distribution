@@ -3,18 +3,18 @@
 # 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# 计数 : 36181
-# 采集时间 : "2026-09-04 05:37:34"
+# 计数 : 36187
+# 采集时间 : "2026-09-04 06:07:49"
 # 证券代码 : XAUUSD
 # 市场 : usd
-# 备注 : "汇总: c=4600690|h=4625450|l=4284280|cnt=6900"
+# 备注 : "汇总: c=4454430|h=4510325|l=4284280|cnt=5526"
 # Title : XAUUSD Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# Count : 36181
-# FetchTime : "2026-09-04 05:37:34"
+# Count : 36187
+# FetchTime : "2026-09-04 06:07:49"
 # SecuCode : XAUUSD
 # Market : usd
 
@@ -36199,3 +36199,9 @@
 1788469080|20260904|045800|4473.37|4473.445|||0|0|85.825|1.96
 1788469140|20260904|045900|4473.445|4473.445|||0|0|85.825|1.96
 1788469200|20260904|050000|4473.445|4473.445|||0|0|85.825|1.96
+1788472860|20260904|060100||4473.445|||0|0|0|0.00
+1788472920|20260904|060200|4473.445|4476.015|||0|0|2.57|0.06
+1788472980|20260904|060300|4476.015|4476.895|||0|0|3.45|0.08
+1788473040|20260904|060400|4476.895|4476.85|||0|0|3.405|0.08
+1788473100|20260904|060500|4476.85|4476.475|||0|0|3.03|0.07
+1788473160|20260904|060600|4476.475|4476.75|||0|0|3.305|0.07
