@@ -4,21 +4,21 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 331
-# 采集时间 : "2026-09-04 03:18:57"
+# 采集时间 : "2026-09-05 03:00:33"
 # 证券代码 : HTI
 # 市场 : usd
-# 备注 : "汇总: c=4620290|h=4648280|l=4452400|cnt=1655"
+# 备注 : "汇总: c=4605150|h=4630490|l=4452400|cnt=1655"
 # Title : HTI Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 331
-# FetchTime : "2026-09-04 03:18:57"
+# FetchTime : "2026-09-05 03:00:33"
 # SecuCode : HTI
 # Market : usd
 
-1785375000|20260730|093000||4885.76|||0|1037058012|21.03|0.43
+1785375000|20260730|093000|4864.73|4885.76|||0|1037058012|21.03|0.43
 1785375060|20260730|093100|4885.76|4909.76|||0|2189672114|45.03|0.93
 1785375120|20260730|093200|4909.76|4872.81|||0|1253459734|8.08|0.17
 1785375180|20260730|093300|4872.81|4880.5|||0|971976070|15.77|0.32
