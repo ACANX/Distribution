@@ -4,21 +4,21 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 390
-# 采集时间 : "2026-09-05 03:00:28"
+# 采集时间 : "2026-09-06 02:20:05"
 # 证券代码 : GLD
 # 市场 : usd
-# 备注 : "汇总: c=408890|h=413490|l=396510|cnt=1706"
+# 备注 : "汇总: c=408890|h=413490|l=396510|cnt=1950"
 # Title : GLD Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 390
-# FetchTime : "2026-09-05 03:00:28"
+# FetchTime : "2026-09-06 02:20:05"
 # SecuCode : GLD
 # Market : usd
 
-1785427200|20260731|000000|376.73|376.706|||4124|1553532.23|5.626|1.52
+1785427200|20260731|000000|371.080|376.706|||4124|1553532.23|5.626|1.52
 1785427260|20260731|000100|376.706|377|||15372|5794072.69|5.92|1.60
 1785427320|20260731|000200|377|377.03|||9553|3602272.384|5.95|1.60
 1785427380|20260731|000300|377.03|377.11|||6898|2601174.154|6.03|1.62
