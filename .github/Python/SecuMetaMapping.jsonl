@@ -21,7 +21,7 @@
 {"Region": "US", "Market": "ARCA", "Code": "GDX"}
 {"Region": "US", "Market": "ARCA", "Code": "GLD"}
 {"Region": "US", "Market": "ARCA", "Code": "IAU"}
-{"Region": "US", "Market": "ARCA", "Code": "SPCX"}
+{"Region": "US", "Market": "NASDAQ", "Code": "SPCX"}
 {"Region": "US", "Market": "COMEX", "Code": "GCMain"}
 {"Region": "CC", "Market": "FTC", "Code": "PAXG"}
 {"Region": "FX", "Market": "CFD", "Code": "XAUUSD"}
