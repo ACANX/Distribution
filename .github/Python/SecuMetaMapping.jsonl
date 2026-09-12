@@ -12,11 +12,11 @@
 {"Region": "CN", "Market": "SH", "Code": "518880"}
 {"Region": "CN", "Market": "SH", "Code": "600570"}
 {"Region": "CN", "Market": "SH", "Code": "688050"}
-{"Region": "CN", "Market": "HK", "Code": "01810"}
-{"Region": "CN", "Market": "HK", "Code": "09999"}
-{"Region": "CN", "Market": "HK", "Code": "HSI"}
-{"Region": "CN", "Market": "HK", "Code": "HSIII"}
-{"Region": "CN", "Market": "HK", "Code": "HTI"}
+{"Region": "HK", "Market": "HK", "Code": "01810"}
+{"Region": "HK", "Market": "HK", "Code": "09999"}
+{"Region": "HK", "Market": "HK", "Code": "HSI"}
+{"Region": "HK", "Market": "HK", "Code": "HSIII"}
+{"Region": "HK", "Market": "HK", "Code": "HTI"}
 {"Region": "US", "Market": "NASDAQ", "Code": "NVDA"}
 {"Region": "US", "Market": "ARCA", "Code": "GDX"}
 {"Region": "US", "Market": "ARCA", "Code": "GLD"}
