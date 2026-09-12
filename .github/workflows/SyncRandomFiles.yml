@@ -21,7 +21,7 @@ on:
       currBranch:
         description: "要处理的分支名(留空=触发时所选分支)"
         required: false
-        default: ""
+        default: "quote"
 
 permissions:
   contents: read
