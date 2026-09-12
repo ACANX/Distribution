@@ -20,18 +20,20 @@ Region / Market 写入文件头 SecuCode 字段之后（已有旧值则覆盖）
 源文件（模式）：
     Archive/Finv/SecuQuote/{Freq}/{Code}/{Code}_{Period}_{Date}.{ext}
 目标文件（模式）：
-    Data/Finv/SecuQuote/FT/{Freq}/{Code}/{Region}_{Market}_{Code}_{Period}_FT_{Date}.{ext}
+    Data/Finv/SecuQuote/FT/{Freq}/{Region}_{Market}/{Code}/
+        {Region}_{Market}_{Code}_{Period}_FT_{Date}.{ext}
 
 其中：
     - {Freq}  ：源路径中 SecuQuote 的下一级目录（Day / Min 等），原样保留；
     - {Code}  ：源文件名首段（证券唯一标识）；
     - {Period}：源文件名中段（Min / Day 等），原样保留；
     - {Date}  ：源文件名尾段（yyyyMMdd，须为 8 位数字）；
-    - {Region}/{Market}：以 {Code} 查同目录 SecuMetaMapping.jsonl 得到；
+    - {Region}/{Market}：以 {Code} 查同目录 SecuMetaMapping.jsonl 得到，
+      并同时用于二级目录（{Region}_{Market}）与文件名前缀；
     - {ext}   ：源扩展名原样保留（.mvsv / .json / .log）。
 示例：
     Archive/Finv/SecuQuote/Day/000001/000001_Min_20260609.mvsv
-    → Data/Finv/SecuQuote/FT/Day/000001/CN_SH_000001_Min_FT_20260609.mvsv
+    → Data/Finv/SecuQuote/FT/Day/CN_SH/000001/CN_SH_000001_Min_FT_20260609.mvsv
 
 不满足以下条件的文件一律跳过（不入库，仅日志记录）：
     - 相对路径不是 Archive/Finv/SecuQuote/{Freq}/{Code}/{文件名} 四级结构；
@@ -275,8 +277,8 @@ def transform_secu_path(rel_path, mapping):
     if meta is None:
         return None, None, "Code %s 在 %s 中无记录" % (code, SECU_META_MAPPING_FILE)
     region, market = meta
-    target = "Data/Finv/SecuQuote/FT/%s/%s/%s_%s_%s_%s_FT_%s%s" % (
-        freq, dir_code, region, market, code, period, date, ext)
+    target = "Data/Finv/SecuQuote/FT/%s/%s_%s/%s/%s_%s_%s_%s_FT_%s%s" % (
+        freq, region, market, dir_code, region, market, code, period, date, ext)
     return target, (region, market), None
 
 
