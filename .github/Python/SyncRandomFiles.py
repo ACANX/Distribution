@@ -90,14 +90,14 @@ TARGET_OWNER = "acdnx"
 TARGET_REPO = "Distribution"
 
 # 随机抽取的文件数量上限（不足按实际数量全取）
-PICK_COUNT = 15
+PICK_COUNT = 25
 
 # 目标文件扩展名集合（统一按小写比较；.json / .mvsv / .log 均支持）
 TARGET_SUFFIXES = (".json", ".mvsv", ".log")
 
 # "陈旧"阈值（天）：仅 git 最后一次修改时间早于 该天数以前 的文件才会进入抽样；
 # 未在 OVERRIDES 中登记的扩展名走默认值
-STALE_DAYS_DEFAULT = 50
+STALE_DAYS_DEFAULT = 42
 STALE_DAYS_OVERRIDES = {".log": 35}
 
 # 只转存该目录前缀下的行情文件（其余文件跳过）
