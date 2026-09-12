@@ -65,7 +65,7 @@ TARGET_SUFFIXES = (".json", ".mvsv", ".log")
 
 # "陈旧"阈值（天）：仅 git 最后一次修改时间早于 该天数以前 的文件才会进入抽样；
 # 未在 OVERRIDES 中登记的扩展名走默认值
-STALE_DAYS_DEFAULT = 50
+STALE_DAYS_DEFAULT = 35
 STALE_DAYS_OVERRIDES = {".log": 35}
 
 
