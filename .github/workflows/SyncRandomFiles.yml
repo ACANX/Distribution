@@ -1,13 +1,17 @@
 # 跨仓库随机行情文件同步: 遍历本仓库指定分支 Archive/Finv/SecuQuote/ 下的
 # .json / .mvsv / .log 文件(排除 "." 开头的隐藏目录), 仅保留 git 最后修改时间足够
-# 陈旧的文件(.json/.mvsv 需 50 天前, .log 需 35 天前), 随机抽取 15 个(不足按实际
-# 数量全取), 按 {Region}_{Market}_{Code}_{Period}_FT_{Date} 规范重命名(Region/Market
-# 由 .github/Python/SecuMetaMapping.jsonl 按 Code 查得, 无记录则跳过), 经 Contents API
-# 提交到
+# 陈旧的文件(均需 35 天前), 随机抽取 25 个(不足按实际数量全取), 按
+# Data/Finv/SecuQuote/FT/{频段}/{Region}_{Market}/{Code}/ 目录与
+# {Region}_{Market}_{Code}_{Period}_FT_{Date} 文件名规范重命名(Region/Market 由
+# .github/Python/SecuMetaMapping.jsonl 按 Code 查得, 无记录则跳过); .mvsv 文件在
+# 发送前还会把 Region/Market 写入文件头 SecuCode 字段之后(已有旧值则覆盖),
+# 经 Contents API 提交到
 # acdnx/Distribution 同名分支的同名路径下, 用于新仓库的数据测试。
 # 触发方式:
-#   - 仅手动触发: Actions 页 Run workflow
-#   - 可通过 currBranch 输入指定要处理的分支; 留空 = 触发时所选分支
+#   - 定时触发: 每天 UTC 17:00 (北京时间凌晨 01:00) 自动运行一次,
+#     定时运行时 currBranch 取默认值 quote
+#   - 手动触发: Actions 页 Run workflow
+#   - 可通过 currBranch 输入指定要处理的分支; 留空 = 触发时所选分支(定时=quote)
 # 注意:
 #   - 检出的是 currBranch 指定分支, 因此该分支上必须已包含本工作流与本脚本;
 #   - 目标分支必须已在 acdnx/Distribution 远端存在;
@@ -15,11 +19,16 @@
 #     contents:write 权限), 令牌只经环境变量注入脚本。
 name: SyncRandomFiles
 
+
 on:
+  schedule:
+    # 北京时间凌晨 01:00 = UTC 前一天 17:00。GitHub 定时任务按 UTC 解析,
+    # 且实际触发可能有数分钟级延迟; 尽量避开整点拥堵故取 17:00 而非 16:59/17:01
+    - cron: "0 17 * * *"
   workflow_dispatch:
     inputs:
       currBranch:
-        description: "要处理的分支名(留空=触发时所选分支)"
+        description: "要处理的分支名(留空=触发时所选分支, 定时触发时取默认值)"
         required: false
         default: "quote"
 
