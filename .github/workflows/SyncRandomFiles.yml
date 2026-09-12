@@ -1,0 +1,50 @@
+# 跨仓库随机文件同步: 遍历本仓库指定分支的全部 .json / .mvsv / .log 文件(排除 "."
+# 开头的隐藏目录), 仅保留 git 最后修改时间足够陈旧的文件(.json/.mvsv 需 50 天前,
+# .log 需 35 天前), 随机抽取 15 个(不足按实际数量全取), 经 Contents API 原样复制到
+# acdnx/Distribution 同名分支的同名路径下, 用于新仓库的数据测试。
+# 触发方式:
+#   - 仅手动触发: Actions 页 Run workflow
+#   - 可通过 currBranch 输入指定要处理的分支; 留空 = 触发时所选分支
+# 注意:
+#   - 检出的是 currBranch 指定分支, 因此该分支上必须已包含本工作流与本脚本;
+#   - 目标分支必须已在 acdnx/Distribution 远端存在;
+#   - 依赖仓库 Secret GIT_COMMIT_TOKEN(需具备 acdnx/Distribution 的
+#     contents:write 权限), 令牌只经环境变量注入脚本。
+name: SyncRandomFiles
+
+on:
+  workflow_dispatch:
+    inputs:
+      currBranch:
+        description: "要处理的分支名(留空=触发时所选分支)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  sync-random-files:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出仓库(指定分支)
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.currBranch || github.ref_name }}
+          fetch-depth: 0
+
+      - name: 设置Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: 运行同步脚本
+        env:
+          GIT_COMMIT_TOKEN: ${{ secrets.GIT_COMMIT_TOKEN }}
+          CURR_BRANCH: ${{ inputs.currBranch || github.ref_name }}
+          PYTHONIOENCODING: utf-8
+        shell: bash
+        run: |
+          python3 .github/Python/SyncRandomFiles.py
