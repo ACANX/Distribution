@@ -1,6 +1,9 @@
-# 跨仓库随机文件同步: 遍历本仓库指定分支的全部 .json / .mvsv / .log 文件(排除 "."
-# 开头的隐藏目录), 仅保留 git 最后修改时间足够陈旧的文件(.json/.mvsv 需 50 天前,
-# .log 需 35 天前), 随机抽取 15 个(不足按实际数量全取), 经 Contents API 原样复制到
+# 跨仓库随机行情文件同步: 遍历本仓库指定分支 Archive/Finv/SecuQuote/ 下的
+# .json / .mvsv / .log 文件(排除 "." 开头的隐藏目录), 仅保留 git 最后修改时间足够
+# 陈旧的文件(.json/.mvsv 需 50 天前, .log 需 35 天前), 随机抽取 15 个(不足按实际
+# 数量全取), 按 {Region}_{Market}_{Code}_{Period}_FT_{Date} 规范重命名(Region/Market
+# 由 .github/Python/SecuMetaMapping.jsonl 按 Code 查得, 无记录则跳过), 经 Contents API
+# 提交到
 # acdnx/Distribution 同名分支的同名路径下, 用于新仓库的数据测试。
 # 触发方式:
 #   - 仅手动触发: Actions 页 Run workflow
