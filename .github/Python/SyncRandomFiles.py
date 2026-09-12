@@ -8,11 +8,12 @@ SyncRandomFiles —— 跨仓库随机行情文件同步（供 GitHub Actions �
 ----------------------------------------------------------------------------------------
 遍历本仓库当前检出分支工作区中 Archive/Finv/SecuQuote/ 下的 .json / .mvsv / .log
 文件（排除 "." 开头的隐藏目录），仅保留"git 最后一次修改时间足够陈旧"的文件
-（.json / .mvsv 需在 50 天以前，.log 需在 35 天以前），随机抽取其中 15 个
-（不足 15 个按实际数量全取），重命名为规范格式的行情文件后，复用同目录
-GitHubCommitContent.py 提供的 commit_content_file 方法，通过 GitHub Contents API
-提交到 acdnx/Distribution 仓库的同名分支下，实现免 clone 的跨仓库随机复制，
-用于新仓库的数据测试。
+（.json / .mvsv / .log 均需在 35 天以前），随机抽取其中 25 个
+（不足 25 个按实际数量全取），重命名为规范格式的行情文件后，复用同目录
+GitHubCommitContent.py 提供的 commit_content / commit_content_file 方法，通过
+GitHub Contents API 提交到 acdnx/Distribution 仓库的同名分支下，实现免 clone 的
+跨仓库随机复制，用于新仓库的数据测试。其中 .mvsv 文件在发送前会把映射到的
+Region / Market 写入文件头 SecuCode 字段之后（已有旧值则覆盖）。
 
 二、路径 / 文件名转换规则
 ----------------------------------------------------------------------------------------
@@ -79,7 +80,7 @@ import sys
 import time
 
 # 同目录纯函数库，直接 import（脚本所在目录自动加入 sys.path）
-from GitHubCommitContent import commit_content_file
+from GitHubCommitContent import commit_content, commit_content_file
 
 # ---------------------------------------------------------------------------
 # 常量
@@ -182,7 +183,7 @@ def stale_days_for(rel_path):
     """按文件扩展名取对应的"陈旧"阈值（天）
 
     :param rel_path: 相对仓库根的文件路径（"/" 分隔）
-    :return: 阈值天数；.log 为 35，其余（.json / .mvsv）为默认 50
+    :return: 阈值天数；.log 为 35，其余（.json / .mvsv）为默认 35
     """
     suffix = os.path.splitext(rel_path)[1].lower()
     return STALE_DAYS_OVERRIDES.get(suffix, STALE_DAYS_DEFAULT)
@@ -190,7 +191,7 @@ def stale_days_for(rel_path):
 
 def filter_stale_files(root, files):
     """过滤出 git 最后修改时间足够陈旧的文件（阈值按扩展名区分：
-    .json / .mvsv 为 50 天，.log 为 35 天）
+    .json / .mvsv / .log 均为 35 天）
 
     :param root: 仓库根目录
     :param files: 候选文件相对路径列表（"/" 分隔）
@@ -252,30 +253,112 @@ def transform_secu_path(rel_path, mapping):
 
     :param rel_path: 源文件相对路径（"/" 分隔）
     :param mapping: 证券元数据映射 dict（load_secu_meta_mapping 的返回值）
-    :return: (目标相对路径, None)；不可转存时返回 (None, 跳过原因)
+    :return: (目标相对路径, (Region, Market), None)；
+             不可转存时返回 (None, None, 跳过原因)
     """
     parts = rel_path.split("/")
     # 结构: Archive/Finv/SecuQuote/{Freq}/{Code}/{文件名} 共 6 段
     if not rel_path.startswith(SECU_QUOTE_PREFIX) or len(parts) != 6:
-        return None, "不在 %s{Freq}/{Code}/ 目录结构下" % SECU_QUOTE_PREFIX
+        return None, None, "不在 %s{Freq}/{Code}/ 目录结构下" % SECU_QUOTE_PREFIX
     freq, dir_code, filename = parts[3], parts[4], parts[5]
     stem, ext = os.path.splitext(filename)
     ext = ext.lower()
     if ext not in TARGET_SUFFIXES:
-        return None, "扩展名 %s 不在支持范围" % ext
+        return None, None, "扩展名 %s 不在支持范围" % ext
     segs = stem.split("_")
     if len(segs) != SRC_NAME_SEGMENTS:
-        return None, "文件名不是 {Code}_{Period}_{Date} 三段结构"
+        return None, None, "文件名不是 {Code}_{Period}_{Date} 三段结构"
     code, period, date = segs
     if len(date) != SRC_DATE_DIGITS or not date.isdigit():
-        return None, "文件名尾段 %s 不是 %d 位日期" % (date, SRC_DATE_DIGITS)
+        return None, None, "文件名尾段 %s 不是 %d 位日期" % (date, SRC_DATE_DIGITS)
     meta = mapping.get(code)
     if meta is None:
-        return None, "Code %s 在 %s 中无记录" % (code, SECU_META_MAPPING_FILE)
+        return None, None, "Code %s 在 %s 中无记录" % (code, SECU_META_MAPPING_FILE)
     region, market = meta
     target = "Data/Finv/SecuQuote/FT/%s/%s/%s_%s_%s_%s_FT_%s%s" % (
         freq, dir_code, region, market, code, period, date, ext)
-    return target, None
+    return target, (region, market), None
+
+
+def patch_mvsv_header(content, region, market):
+    """在 mvsv 文件头的 SecuCode 之后写入 Region / Market（已有则覆盖）
+
+    中英文两段元数据对称处理：
+        CN: # 证券代码 之后插入 # 地区（新增/覆盖），# 市场 覆盖为映射值
+        EN: # SecuCode  之后插入 # Region（新增/覆盖），# Market 覆盖为映射值
+    最终顺序固定为 锚字段 → Region → Market；值不加引号（与既有 # Market : cny
+    风格一致）；仅在内存中修改字符串，不改动本地文件、不影响数据区。
+
+    :param content: mvsv 文件完整文本（UTF-8 读取）
+    :param region: 映射到的 Region（如 "CN"）
+    :param market: 映射到的 Market（如 "SH"）
+    :return: 修改后的完整文本；文件无元数据头（无任何 "#" 行）时原样返回
+    """
+    lines = content.splitlines(keepends=True)
+
+    # 元数据头块 = 首个非 "#" 行 / 空行之前的连续 "#" 行
+    header_end = 0
+    for i, line in enumerate(lines):
+        stripped = line.lstrip("\ufeff").strip()
+        if stripped.startswith("#"):
+            header_end = i + 1
+        else:
+            break
+    if header_end == 0:
+        return content  # 无元数据头，无从注入，原样返回
+
+    def key_of(line):
+        """解析 "# key : value" 行的 key；非键值形态返回 None"""
+        body = line.lstrip("\ufeff").strip()
+        if not body.startswith("#"):
+            return None
+        body = body[1:].strip()
+        if ":" not in body:
+            return None
+        return body.split(":", 1)[0].strip()
+
+    def eol_of(line):
+        """保留原行行尾（\r\n / \n / 无）"""
+        if line.endswith("\r\n"):
+            return "\r\n"
+        if line.endswith("\n"):
+            return "\n"
+        return ""
+
+    def header_end_now():
+        """实时计算元数据头块边界（注入/删除会改变行数，不能缓存）"""
+        end = 0
+        for i, line in enumerate(lines):
+            if line.lstrip("\ufeff").strip().startswith("#"):
+                end = i + 1
+            else:
+                break
+        return end
+
+    def patch_section(anchor_key, region_key, market_key):
+        """对单语种段做 Region/Market 注入（原地修改 lines）
+
+        已有 region/market 行 → 删除后按规范位置重插，保证覆盖且顺序稳定；
+        无锚字段行时退化为插入到文件头块末尾。
+        """
+        region_line = "# %s : %s" % (region_key, region)
+        market_line = "# %s : %s" % (market_key, market)
+        # 1) 移除已有的 region/market 行（含旧值，等价"覆盖"）；头块边界实时重算
+        for i in range(header_end_now() - 1, -1, -1):
+            if key_of(lines[i]) in (region_key, market_key):
+                del lines[i]
+        # 2) 定位锚字段行（头块内从后往前找最后一个匹配，紧贴其元数据段）
+        insert_at = header_end_now()
+        for i in range(insert_at - 1, -1, -1):
+            if key_of(lines[i]) == anchor_key:
+                insert_at = i + 1
+                break
+        eol = eol_of(lines[insert_at - 1]) if insert_at > 0 else "\n"
+        lines[insert_at:insert_at] = [region_line + eol, market_line + eol]
+
+    patch_section("证券代码", "地区", "市场")
+    patch_section("SecuCode", "Region", "Market")
+    return "".join(lines)
 
 
 def resolve_branch():
@@ -315,18 +398,18 @@ def main():
 
     stale_files, stale_excluded = filter_stale_files(root, all_files)
     print("陈旧过滤：.json/.mvsv 需 %d 天前、.log 需 %d 天前 → 满足 %d 个（排除 %d 个）"
-          % (STALE_DAYS_DEFAULT, STALE_DAYS_OVERRIDES[".log"],
+          % (STALE_DAYS_DEFAULT, STALE_DAYS_OVERRIDES.get(".log", STALE_DAYS_DEFAULT),
              len(stale_files), stale_excluded))
 
     # 路径转换映射：仅 SecuQuote 下能解析出 Code 并查到 Region/Market 的文件可转存
-    eligible = []  # [(源相对路径, 目标相对路径)]
+    eligible = []  # [(源相对路径, 目标相对路径, (Region, Market))]
     skip_reasons = {}
     for rel_path in stale_files:
-        target, reason = transform_secu_path(rel_path, mapping)
+        target, meta, reason = transform_secu_path(rel_path, mapping)
         if target is None:
             skip_reasons[rel_path] = reason
         else:
-            eligible.append((rel_path, target))
+            eligible.append((rel_path, target, meta))
     for rel_path, reason in skip_reasons.items():
         print("⏭️ 跳过 %s：%s" % (rel_path, reason))
     print("可转存文件：%d 个（跳过 %d 个）" % (len(eligible), len(skip_reasons)))
@@ -336,21 +419,37 @@ def main():
 
     picked = random.sample(eligible, min(PICK_COUNT, len(eligible)))
     print("随机抽取 %d 个文件：" % len(picked))
-    for src, target in picked:
+    for src, target, _meta in picked:
         print("  - %s" % src)
         print("    → %s" % target)
 
     ok_count = 0
     fail_list = []
-    for src_path, target_path in picked:
+    for src_path, target_path, (region, market) in picked:
         local_file = os.path.join(root, src_path.replace("/", os.sep))
         # 提交说明带目标路径与来源分支，便于在目标仓库追溯
-        result = commit_content_file(
-            target_path, local_file,
-            branch=branch,
-            owner=TARGET_OWNER, repo=TARGET_REPO,
-            commit_msg="[SyncRandomFiles] %s from %s" % (target_path, branch),
-        )
+        commit_msg = "[SyncRandomFiles] %s from %s" % (target_path, branch)
+        if src_path.lower().endswith(".mvsv"):
+            # .mvsv：读入后在文件头 SecuCode 之后注入 Region/Market（覆盖旧值）再提交
+            try:
+                with open(local_file, "r", encoding="utf-8", newline="") as f:
+                    content = f.read()
+            except OSError as e:
+                fail_list.append((target_path, "读取本地文件失败: %s" % e))
+                print("❌ %s：读取本地文件失败: %s" % (target_path, e))
+                continue
+            patched = patch_mvsv_header(content, region, market)
+            result = commit_content(
+                target_path, patched,
+                branch=branch, owner=TARGET_OWNER, repo=TARGET_REPO,
+                commit_msg=commit_msg,
+            )
+        else:
+            result = commit_content_file(
+                target_path, local_file,
+                branch=branch, owner=TARGET_OWNER, repo=TARGET_REPO,
+                commit_msg=commit_msg,
+            )
         if result["success"]:
             ok_count += 1
             print("✅ %s（HTTP %s）" % (target_path, result["http_status"]))
