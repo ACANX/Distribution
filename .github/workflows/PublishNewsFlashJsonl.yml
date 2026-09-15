@@ -1,0 +1,94 @@
+# 新闻快讯 JSONL 规范命名发布
+#
+# 把 Archive/Finv/News/ 下两个快讯归档目录中历史遗留的"裸名" jsonl, 按规范命名
+# 提交到本仓库 news 分支的同一目录, 提交成功后删除原文件:
+#   Archive/Finv/News/FlashFutu/<year>/<yyyyMMdd>.jsonl
+#     -> Archive/Finv/News/FlashFutu/<year>/News_Flash_FlashFutu_DAY_FT_<yyyyMMdd>.jsonl
+#   Archive/Finv/News/FlashEastMoney/<year>/<yyyyMMdd>.jsonl
+#     -> Archive/Finv/News/FlashEastMoney/<year>/News_Flash_FlashEastMoney_DAY_EM_<yyyyMMdd>.jsonl
+#
+# 上游两个脚本(FlashFutuConvertJSONToJSONL.py / MainEastMoney.py)已改为直接输出
+# 规范命名, 因此本工作流属"存量清理 + 兜底": 首次运行会把存量裸名文件全部搬运并
+# 清理, 之后仓库不再产生裸名文件, 每次运行只是无事可做(完整幂等)。
+#
+# 触发方式:
+#   - 定时触发: 每天 UTC 21:20(北京时间 05:20)自动运行一次, 排在
+#     FlashEastMoney(北京 00:45)与 FlashFutuConvert(北京 03:45)之后,
+#     当天新数据当天就位; 删除开关默认开启
+#   - 手动触发: Actions 页 Run workflow, 可指定来源/日期/数量上限/删除开关
+#
+# 运行分支说明:
+#   工作流文件放在默认分支 dev —— GitHub 的定时任务只执行默认分支上的 YAML;
+#   脚本与数据从 news 检出(ref: news), 提交经 Contents API 写回 news,
+#   不做本地 git 提交, 因此不会与本仓库其它定时任务的数据推送产生 push 竞争。
+#
+# 注意:
+#   - 首次全量约 180 个文件, 逐个提交会生成较多 commit(约 2 个/文件, 提交+删除);
+#     如需分批, 用手动触发的 limit 输入控制单次处理数量, 其余留待下次;
+#   - 删除是"提交成功"的后续动作, 提交失败的文件一律保留, 重跑即可补齐;
+#   - 依赖仓库 Secret GIT_COMMIT_TOKEN(需本仓库 contents:write 权限),
+#     令牌只经环境变量注入脚本, 不写入任何源码或日志。
+name: PublishNewsFlashJsonl
+
+on:
+  schedule:
+    # 北京时间 05:20 = UTC 21:20。GitHub 定时任务按 UTC 解析, 且实际触发
+    # 可能有数分钟级延迟; 避开整点以减少定时任务拥堵
+    - cron: "20 21 * * *"
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "只处理指定来源(FlashFutu/FlashEastMoney, 留空=全部)"
+        required: false
+        default: ""
+      date:
+        description: "只处理该日期 YYYYMMDD(留空=全部)"
+        required: false
+        default: ""
+      limit:
+        description: "单次最多处理文件数(0=不限)"
+        required: false
+        default: "0"
+      enableDelete:
+        description: "删除开关(提交成功后删除原文件)"
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # 首次全量约 180 个文件、每个文件 4 次 API 调用(查 sha + 提交 + 查 sha + 删除),
+    # 留足余量; 后续日常运行基本秒级结束
+    timeout-minutes: 60
+
+    steps:
+      - name: 检出仓库(news 分支)
+        uses: actions/checkout@v5
+        with:
+          ref: news
+          fetch-depth: 0
+
+      - name: 设置Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: 运行发布脚本
+        env:
+          GIT_COMMIT_TOKEN: ${{ secrets.GIT_COMMIT_TOKEN }}
+          NEWS_FLASH_BRANCH: news
+          # 定时触发时 inputs 上下文为空, 以下各项都会解析成空串,
+          # 脚本端按"空串=未设置"回退到内置默认(来源=全部, 日期=不限,
+          # limit=0 不限, 删除开关=开), 因此无需在此处写兜底表达式
+          NEWS_FLASH_SOURCE: ${{ inputs.source }}
+          NEWS_FLASH_DATE: ${{ inputs.date }}
+          NEWS_FLASH_LIMIT: ${{ inputs.limit }}
+          NEWS_FLASH_ENABLE_DELETE: ${{ inputs.enableDelete }}
+          PYTHONIOENCODING: utf-8
+        shell: bash
+        run: |
+          python3 .github/Python/Flash/PublishNewsFlashJsonl.py --log
