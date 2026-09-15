@@ -32,8 +32,10 @@ _PATTERN = re.compile(r"^(.+?)_([^_]+)_([^_]+)_(\d{14})\.txt$")
 
 
 def default_data_dir() -> Path:
-    """仓库根目录下的 Data\\Finv\\GoldQuote。脚本位于 Python/QuoteGold/ 下。"""
-    repo_root = Path(__file__).resolve().parents[2]
+    """仓库根目录下的 Data\\Finv\\GoldQuote。脚本位于 .github/Python/QuoteGold/ 下。"""
+    # 本文件位于 <仓库根>/.github/Python/QuoteGold/，上溯三级即仓库根
+    # （若日后调整本文件所在层级，需同步修改这里的 parents 下标）
+    repo_root = Path(__file__).resolve().parents[3]
     return repo_root / "Data" / "Finv" / "GoldQuote"
 
 
