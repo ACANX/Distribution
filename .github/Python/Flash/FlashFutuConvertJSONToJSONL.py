@@ -6,7 +6,7 @@
 作用:
     将 Data/Finv/News/FlashFutu/<year>/<yyyymmdd>.json(内部为 JSON 数组)
     转换为 JSONL 文件(数组元素一行一个), 保存到
-    Archive/Finv/News/FlashFutu/<year>/<yyyymmdd>.jsonl 。
+    Archive/Finv/News/FlashFutu/<year>/News_Flash_FlashFutu_DAY_FT_<yyyymmdd>.jsonl 。
 
     专为 GitHub Actions 定时任务设计: 每天(北京时间 03:45)运行一次,
     增量合并转换新产生的 JSON 文件, 支持手动触发。
@@ -28,7 +28,9 @@
 
 目录与命名:
     源   : <base_dir>/Finv/News/FlashFutu/<year>/<yyyymmdd>.json
-    目标 : <archive_dir>/Finv/News/FlashFutu/<year>/<yyyymmdd>.jsonl
+    目标 : <archive_dir>/Finv/News/FlashFutu/<year>/News_Flash_FlashFutu_DAY_FT_<yyyymmdd>.jsonl
+           (规范命名, 与发布任务 PublishNewsFlashJsonl.py 的输出名保持一致;
+            历史遗留的裸名 <yyyymmdd>.jsonl 由该发布任务搬运并清理)
 
 配置来源(优先级从高到低):
     1. 命令行参数(--base-dir / --archive-dir / --year / --keep-json-days 等)
@@ -134,9 +136,15 @@ def buildSourcePath(base_dir: str, year: str, basename: str) -> str:
     return os.path.join(base_dir, *REL_DATA, year, basename + ".json")
 
 
+# 归档 JSONL 的规范命名(与发布任务 PublishNewsFlashJsonl.py 保持一致)
+#   News_Flash_FlashFutu_DAY_FT_<yyyyMMdd>.jsonl
+TARGET_NAME_TEMPLATE = "News_Flash_FlashFutu_DAY_FT_%s.jsonl"
+
+
 def buildTargetPath(archive_dir: str, year: str, basename: str) -> str:
-    """目标 JSONL 路径: <archive_dir>/Finv/News/FlashFutu/<year>/<basename>.jsonl"""
-    return os.path.join(archive_dir, *REL_DATA, year, basename + ".jsonl")
+    """目标 JSONL 路径: <archive_dir>/Finv/News/FlashFutu/<year>/News_Flash_FlashFutu_DAY_FT_<basename>.jsonl"""
+    return os.path.join(archive_dir, *REL_DATA, year,
+                        TARGET_NAME_TEMPLATE % basename)
 
 
 def loadExistingIds(jsonl_path: str) -> Set[Any]:

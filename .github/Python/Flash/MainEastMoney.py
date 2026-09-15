@@ -5,15 +5,17 @@
 
 作用:
     采集前一天(北京时间自然日, 00:00:00 分界)的东方财富快讯,
-    保存为 jsonl 文件, 按日期命名(如 20260806.jsonl),
-    存放到可配置的目录: <base_dir>/Finv/FlashEastMoney/<year>/ 。
+    保存为 jsonl 文件, 按规范命名
+    (如 News_Flash_FlashEastMoney_DAY_EM_20260806.jsonl),
+    存放到可配置的目录: <base_dir>/Finv/News/FlashEastMoney/<year>/ 。
 
     专为 GitHub Actions 定时任务设计: 支持从配置与环境变量读取参数,
     输出可被 workflow 消费的结果信息。
 
 目录与命名:
-    默认目标: Archive/Finv/News/FlashEastMoney/2026/20260806.jsonl
+    默认目标: Archive/Finv/News/FlashEastMoney/2026/News_Flash_FlashEastMoney_DAY_EM_20260806.jsonl
     其中 Archive 为 base_dir(仓库相对路径), year 为前一天年份。
+    历史遗留的裸名 <yyyymmdd>.jsonl 由发布任务 PublishNewsFlashJsonl.py 搬运并清理。
 
 配置来源(优先级从高到低):
     1. 环境变量 MAIN_BASE_DIR / MAIN_SLEEP_BETWEEN
@@ -98,10 +100,15 @@ def resolveSetting(
     return default
 
 
+# 归档 JSONL 的规范命名(与发布任务 PublishNewsFlashJsonl.py 保持一致)
+#   News_Flash_FlashEastMoney_DAY_EM_<yyyyMMdd>.jsonl
+TARGET_NAME_TEMPLATE = "News_Flash_FlashEastMoney_DAY_EM_%s.jsonl"
+
+
 def buildTargetPath(base_dir: str, day: datetime) -> str:
     """
     根据 base_dir 与目标日期生成文件路径:
-        <base_dir>/Finv/News/FlashEastMoney/<year>/<yyyymmdd>.jsonl
+        <base_dir>/Finv/News/FlashEastMoney/<year>/News_Flash_FlashEastMoney_DAY_EM_<yyyymmdd>.jsonl
     """
     return os.path.join(
         base_dir,
@@ -109,7 +116,7 @@ def buildTargetPath(base_dir: str, day: datetime) -> str:
         "News",
         "FlashEastMoney",
         day.strftime("%Y"),
-        day.strftime("%Y%m%d") + ".jsonl",
+        TARGET_NAME_TEMPLATE % day.strftime("%Y%m%d"),
     )
 
 
