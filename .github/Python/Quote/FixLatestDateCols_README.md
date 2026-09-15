@@ -31,13 +31,13 @@ git checkout quote
 **仅修复 Latest.mvsv（默认）：**
 
 ```bash
-python3 Python/Quote/FixLatestDateCols.py
+python3 .github/Python/Quote/FixLatestDateCols.py
 ```
 
 **包括归档文件：**
 
 ```bash
-python3 Python/Quote/FixLatestDateCols.py --all
+python3 .github/Python/Quote/FixLatestDateCols.py --all
 ```
 
 输出示例：

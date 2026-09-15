@@ -10,11 +10,11 @@ MonthlyCron: '0 2 15-21 * 1'
 MonthlyDeleteLagMonths: 2
 CleanupRawAfterAggregate: true
 CleanupExecLogRawAfterArchive: true
-LogDir: Python/Quote/logs
+LogDir: .github/Python/Quote/logs
 LogRetentionDays: 14
 GitPushRetries: 1
 HolidaysFiles:
-  cny: Python/Quote/common/holidays/cny.csv
-  hkd: Python/Quote/common/holidays/hkd.csv
-  usd: Python/Quote/common/holidays/usd.csv
-  crypto: Python/Quote/common/holidays/crypto.csv
+  cny: .github/Python/Quote/common/holidays/cny.csv
+  hkd: .github/Python/Quote/common/holidays/hkd.csv
+  usd: .github/Python/Quote/common/holidays/usd.csv
+  crypto: .github/Python/Quote/common/holidays/crypto.csv

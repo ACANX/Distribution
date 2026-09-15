@@ -28,7 +28,7 @@ class Config:
     monthly_delete_lag_months: int = 2
     cleanup_raw_after_aggregate: bool = True
     cleanup_exec_log_raw_after_archive: bool = True
-    log_dir: Path = field(default_factory=lambda: Path('Python/Quote/logs'))
+    log_dir: Path = field(default_factory=lambda: Path('.github/Python/Quote/logs'))
     log_retention_days: int = 14
     git_push_retries: int = 1
     holidays_files: Dict[str, str] = field(default_factory=dict)
@@ -54,7 +54,7 @@ def load_config() -> Config:
     """加载并解析 Config.yaml，合并环境变量覆盖"""
     repo_root = _find_repo_root()
 
-    config_path = repo_root / 'Python' / 'Quote' / 'Config.yaml'
+    config_path = repo_root / '.github' / 'Python' / 'Quote' / 'Config.yaml'
     if not config_path.exists():
         raise FileNotFoundError(f'配置文件不存在: {config_path}')
 
@@ -86,7 +86,7 @@ def load_config() -> Config:
         monthly_delete_lag_months=int(raw.get('MonthlyDeleteLagMonths', 2)),
         cleanup_raw_after_aggregate=bool(raw.get('CleanupRawAfterAggregate', True)),
         cleanup_exec_log_raw_after_archive=bool(raw.get('CleanupExecLogRawAfterArchive', True)),
-        log_dir=repo_root / raw.get('LogDir', 'Python/Quote/logs'),
+        log_dir=repo_root / raw.get('LogDir', '.github/Python/Quote/logs'),
         log_retention_days=int(raw.get('LogRetentionDays', 14)),
         git_push_retries=int(raw.get('GitPushRetries', 1)),
         holidays_files=holidays_files,

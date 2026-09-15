@@ -3,7 +3,7 @@
 ## 概述
 
 MVSV 是 MetaX 定义的竖线分隔值文件格式，由元数据区 + 空行 + 数据区三部分组成。
-本模块 `Python/Quote/common/mvsv.py` 实现了 MVSV 的解析、序列化、合并去重、列扩展等功能。
+本模块 `.github/Python/Quote/common/mvsv.py` 实现了 MVSV 的解析、序列化、合并去重、列扩展等功能。
 
 ---
 
@@ -186,10 +186,10 @@ files = scan_source_files("Data/Finv/SecuQuote/GCMain")
 
 ```bash
 # 仅 Latest.mvsv
-python3 Python/Quote/FixLatestDateCols.py
+python3 .github/Python/Quote/FixLatestDateCols.py
 
 # 包括归档文件
-python3 Python/Quote/FixLatestDateCols.py --all
+python3 .github/Python/Quote/FixLatestDateCols.py --all
 ```
 
 ### Task01AggregateLatest.py
