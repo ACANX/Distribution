@@ -2,7 +2,7 @@
 中文结构化日志模块
 
 格式: [ISO8601][LEVEL][task][code] 消息
-输出: stdout + 文件 (Python/Quote/logs/{task}_{yyyymmdd}.log)
+输出: stdout + 文件 (.github/Python/Quote/logs/{task}_{yyyymmdd}.log)
 """
 
 import logging

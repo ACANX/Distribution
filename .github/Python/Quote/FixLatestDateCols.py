@@ -13,9 +13,9 @@
   - 更新 #字段 / #字段名称 / #字段类型 元数据
 
 用法:
-  python3 Python/Quote/FixLatestDateCols.py [--all]
-  python3 Python/Quote/FixLatestDateCols.py           # 仅 Latest.mvsv
-  python3 Python/Quote/FixLatestDateCols.py --all      # 包括归档文件
+  python3 .github/Python/Quote/FixLatestDateCols.py [--all]
+  python3 .github/Python/Quote/FixLatestDateCols.py           # 仅 Latest.mvsv
+  python3 .github/Python/Quote/FixLatestDateCols.py --all      # 包括归档文件
 
 安全:
   - 只修复有问题的行，正常行保持不变
@@ -99,7 +99,16 @@ def validate_after_fix(path: str, data: MVSVData, expected_cols: set = {8}):
 def main():
     include_archives = '--all' in sys.argv
 
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    # 本文件位于 <仓库根>/.github/Python/Quote/ 下：
+    # 先取所在目录，再上溯三级（Quote → Python → .github → 仓库根）
+    _HERE = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(_HERE)))
+    # 自校验：万一将来本文件被移到其它层级，这里立刻报错，
+    # 而不是静默地去错误的目录里扫描、进而误改无关文件
+    if os.path.abspath(__file__) != os.path.join(
+            base_dir, '.github', 'Python', 'Quote', os.path.basename(__file__)):
+        raise RuntimeError(
+            f'无法从脚本位置推断仓库根目录: {base_dir}（本文件所在层级可能已变更）')
     files = scan_patterns(base_dir, include_archives)
 
     if not files:

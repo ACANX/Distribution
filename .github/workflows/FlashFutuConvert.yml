@@ -42,7 +42,7 @@ jobs:
           # 验证期默认不删除源 JSON 文件; 流程跑通后如需启用"转换后删除 N 天前
           # 的源 JSON", 在下方命令追加参数, 例如:
           #   --keep-json-days 7  (仅保留最近 7 天的源 JSON, 更早的已转换源文件删除)
-          python3 Python/Flash/FlashFutuConvertJSONToJSONL.py --log
+          python3 .github/Python/Flash/FlashFutuConvertJSONToJSONL.py --log
       - name: 提交并推送数据(到 news)
         run: |
           git config user.name "github-actions[bot]"

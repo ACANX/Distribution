@@ -32,17 +32,17 @@ jobs:
         with:
           python-version: '3.14'
 
-      # 脚本当前仅依赖 Python 标准库; 若未来在 Python/QuoteGold/ 下新增
+      # 脚本当前仅依赖 Python 标准库; 若未来在 .github/Python/QuoteGold/ 下新增
       # requirements.txt, 本步骤会自动安装其第三方依赖
       - name: 安装第三方依赖(如有)
-        if: hashFiles('Python/QuoteGold/requirements.txt') != ''
+        if: hashFiles('.github/Python/QuoteGold/requirements.txt') != ''
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r Python/QuoteGold/requirements.txt
+          python -m pip install -r .github/Python/QuoteGold/requirements.txt
 
       - name: 运行合并脚本
         run: |
-          python Python/QuoteGold/MergeToLatestTxt.py
+          python .github/Python/QuoteGold/MergeToLatestTxt.py
 
       # 脚本正常结束后: 若仓库中存在删除/修改的文件, 提交并推送到 quote-gold
       - name: 提交并推送变更到 quote-gold
