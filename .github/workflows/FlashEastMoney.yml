@@ -39,16 +39,16 @@ jobs:
       - name: 运行Python脚本
         shell: bash
         run: |
-          # 从仓库根运行 Python/Main.py(Main.py 内部已把 Python/ 加入 sys.path);
+          # 从仓库根运行 .github/Python/Flash/MainEastMoney.py(脚本内部已把所在目录加入 sys.path);
           # 数据保存在仓库根 Archive/Finv/News/FlashEastMoney/<year>/<yyyymmdd>.jsonl,
           # 便于下一步 git add 直接匹配。
           # 手动触发时可用 target_date 指定日期; 留空则 Main.py 默认取前一天
           args=()
-          args+=(--config Python/Flash/Config.json --print --log)
+          args+=(--config .github/Python/Flash/Config.json --print --log)
           if [ -n "${{ github.event.inputs.target_date }}" ]; then
             args+=(--date "${{ github.event.inputs.target_date }}")
           fi
-          python3 Python/Flash/MainEastMoney.py "${args[@]}"
+          python3 .github/Python/Flash/MainEastMoney.py "${args[@]}"
       - name: 提交并推送数据(到 FQ)
         run: |
           git config user.name "github-actions[bot]"

@@ -64,7 +64,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 # jsonl 输出编码
 OUT_ENCODING = "utf-8"
 
-# 确保能定位同目录的配置文件(在 GitHub Actions 中脚本位于 Python/Flash/
+# 确保能定位同目录的配置文件(在 GitHub Actions 中脚本位于 .github/Python/Flash/
 # 目录, 而工作目录可能是仓库根, 因此显式用脚本所在目录)
 _HERE = os.path.dirname(os.path.abspath(__file__))
 

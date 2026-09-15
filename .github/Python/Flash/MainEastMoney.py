@@ -38,7 +38,7 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 # 确保能 import 同目录的 FlashEastMoney(在 GitHub Actions 中脚本位于
-# Python/ 目录, 而工作目录可能是仓库根, 因此显式把脚本目录加入 sys.path)
+# .github/Python/Flash/ 目录, 而工作目录可能是仓库根, 因此显式把脚本目录加入 sys.path)
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
