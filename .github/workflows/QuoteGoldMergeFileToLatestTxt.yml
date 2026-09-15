@@ -1,0 +1,61 @@
+name: QuoteGoldMergeFileToLatestTxt
+
+# 每 4 小时定时执行一次; 同时支持手动触发(workflow_dispatch)以便随时测试
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+# 同一时间只允许一个该工作流运行, 避免定时任务与手动触发竞争提交/推送
+concurrency:
+  group: QuoteGoldMergeFileToLatestTxt
+  cancel-in-progress: false
+
+# 需要写权限, 以便把合并产生的文件变更 commit + push 回远端
+permissions:
+  contents: write
+
+jobs:
+  merge-to-latest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # 第一步: 无论工作流从哪个分支被触发, 都切换到 quote-gold 分支
+      - name: 检出 quote-gold 分支
+        uses: actions/checkout@v5
+        with:
+          ref: quote-gold
+          fetch-depth: 0
+
+      - name: 配置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      # 脚本当前仅依赖 Python 标准库; 若未来在 Python/QuoteGold/ 下新增
+      # requirements.txt, 本步骤会自动安装其第三方依赖
+      - name: 安装第三方依赖(如有)
+        if: hashFiles('Python/QuoteGold/requirements.txt') != ''
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r Python/QuoteGold/requirements.txt
+
+      - name: 运行合并脚本
+        run: |
+          python Python/QuoteGold/MergeToLatestTxt.py
+
+      # 脚本正常结束后: 若仓库中存在删除/修改的文件, 提交并推送到 quote-gold
+      - name: 提交并推送变更到 quote-gold
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "::notice::本次运行无文件变更, 跳过提交与推送"
+          else
+            git commit -m "UpdatedAt@$(date -u +'%Y-%m-%dT%H:%M:%S.%N')"
+            git pull --rebase origin quote-gold
+            git push origin quote-gold
+            echo "::notice::已将变更提交并推送到 quote-gold"
+          fi
