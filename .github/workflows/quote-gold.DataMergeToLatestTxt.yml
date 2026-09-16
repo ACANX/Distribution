@@ -1,4 +1,4 @@
-name: QuoteGoldMergeFileToLatestTxt
+name: quote-gold.DataMergeToLatestTxt
 
 # 每 4 小时定时执行一次; 同时支持手动触发(workflow_dispatch)以便随时测试
 on:
