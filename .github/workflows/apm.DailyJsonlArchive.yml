@@ -1,4 +1,4 @@
-# apm.ArchiveDailyJsonl —— APM 埋点 JSON 按日转 JSONL 归档
+# apm.DailyJsonlArchive —— APM 埋点 JSON 按日转 JSONL 归档
 # =============================================================================
 #
 # 每日把 apm 分支上 Data/Meta/WebMMCP/APM/{type}/ 与
@@ -17,7 +17,7 @@
 # 脚本与数据都在 apm 分支, checkout 的 ref 指向 apm; 命名沿用
 # <分支>.<用途>.yml 规范。
 
-name: apm.ArchiveDailyJsonl
+name: apm.DailyJsonlArchive
 
 on:
   schedule:
@@ -43,7 +43,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: ApmArchiveDailyJsonl
+  group: ApmDailyJsonlArchive
   cancel-in-progress: false
 
 jobs:
