@@ -1,15 +1,26 @@
-# 新闻快讯 JSONL 规范命名发布
+# 新闻快讯 JSONL 规范命名搬运(跨仓库)
 #
-# 把 Archive/Finv/News/ 下两个快讯归档目录中历史遗留的"裸名" jsonl, 按规范命名
-# 提交到本仓库 news 分支的同一目录, 提交成功后删除原文件:
+# 把**本仓库**(ACANX/Distribution, 采集暂存端) Archive/Finv/News/ 下两个快讯归档
+# 目录里的 jsonl, 按规范命名搬运到**另一个仓库 acdnx/Distribution**(归档端)的
+# news 分支同一目录下, 搬运成功后删除本仓库的原文件:
 #   Archive/Finv/News/FlashFutu/<year>/<yyyyMMdd>.jsonl
-#     -> Archive/Finv/News/FlashFutu/<year>/News_Flash_FlashFutu_DAY_FT_<yyyyMMdd>.jsonl
+#     -> acdnx/Distribution: Archive/Finv/News/FlashFutu/<year>/News_Flash_FlashFutu_DAY_FT_<yyyyMMdd>.jsonl
 #   Archive/Finv/News/FlashEastMoney/<year>/<yyyyMMdd>.jsonl
-#     -> Archive/Finv/News/FlashEastMoney/<year>/News_Flash_FlashEastMoney_DAY_EM_<yyyyMMdd>.jsonl
+#     -> acdnx/Distribution: Archive/Finv/News/FlashEastMoney/<year>/News_Flash_FlashEastMoney_DAY_EM_<yyyyMMdd>.jsonl
+#
+# 两个仓库是彼此独立的仓库, 不是同一个名字的大小写变体:
+#   本仓库     ACANX/Distribution  (API id 1182994715) —— 采集暂存端, 源文件的删除侧
+#   归档端     acdnx/Distribution  (API id 1293253241) —— 归档侧, 规范名文件的落点
+# 提交端由脚本里的 TARGET_OWNER/TARGET_REPO 常量显式指定, **刻意不走 .git 解析**;
+# 用 .git 解析会把文件提交回本仓库, 与"搬到新仓库"的意图正好相反。
+# 与 SyncRandomFiles.yml "经 Contents API 提交到 acdnx/Distribution ... 用于新仓库的
+# 数据测试" 是同一套跨仓库约定。
 #
 # 上游两个脚本(FlashFutuConvertJSONToJSONL.py / MainEastMoney.py)已改为直接输出
-# 规范命名, 因此本工作流属"存量清理 + 兜底": 首次运行会把存量裸名文件全部搬运并
-# 清理, 之后仓库不再产生裸名文件, 每次运行只是无事可做(完整幂等)。
+# 规范命名, 所以源端既可能是历史遗留的裸名、也可能是已规范名, 脚本两种都收:
+#   裸名   -> 搬运时改名
+#   规范名 -> 原样搬过去(名字不变)
+# 于是本工作流是常态化的: 每天把上游当天产出的文件搬到归档端并清空本仓库副本。
 #
 # 触发方式:
 #   - 定时触发: 每天 UTC 21:20(北京时间 05:20)自动运行一次, 排在
@@ -19,14 +30,15 @@
 #
 # 运行分支说明:
 #   工作流文件放在默认分支 dev —— GitHub 的定时任务只执行默认分支上的 YAML;
-#   脚本与数据从 news 检出(ref: news), 提交经 Contents API 写回 news,
+#   源文件从本仓库 news 检出(ref: news), 提交经 Contents API 写到归档端 news,
 #   不做本地 git 提交, 因此不会与本仓库其它定时任务的数据推送产生 push 竞争。
 #
 # 注意:
 #   - 首次全量约 180 个文件, 逐个提交会生成较多 commit(约 2 个/文件, 提交+删除);
 #     如需分批, 用手动触发的 limit 输入控制单次处理数量, 其余留待下次;
 #   - 删除是"提交成功"的后续动作, 提交失败的文件一律保留, 重跑即可补齐;
-#   - 依赖仓库 Secret GIT_COMMIT_TOKEN(需本仓库 contents:write 权限),
+#   - 依赖仓库 Secret GIT_COMMIT_TOKEN, **需同时具备本仓库与 acdnx/Distribution
+#     的 contents:write 权限**(前者用于删除源文件, 后者用于写入规范名文件);
 #     令牌只经环境变量注入脚本, 不写入任何源码或日志。
 name: PublishNewsFlashJsonl
 
@@ -50,7 +62,7 @@ on:
         required: false
         default: "0"
       enableDelete:
-        description: "删除开关(提交成功后删除原文件)"
+        description: "删除开关(提交成功后删除本仓库原文件)"
         type: boolean
         required: false
         default: true
@@ -58,10 +70,15 @@ on:
 permissions:
   contents: write
 
+# 同一时刻只允许一个实例: 提交与删除不是原子操作, 两次运行并发会互相踩
+concurrency:
+  group: PublishNewsFlashJsonl
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
-    # 首次全量约 180 个文件、每个文件 4 次 API 调用(查 sha + 提交 + 查 sha + 删除),
+    # 首次全量约 180 个文件、每个文件 4 次 API 调用(查归档端 sha + 提交 + 查源 sha + 删除),
     # 留足余量; 后续日常运行基本秒级结束
     timeout-minutes: 60
 
@@ -77,10 +94,14 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: 运行发布脚本
+      - name: 运行搬运脚本
         env:
           GIT_COMMIT_TOKEN: ${{ secrets.GIT_COMMIT_TOKEN }}
           NEWS_FLASH_BRANCH: news
+          # 归档端仓库身份。脚本内置默认值同为 acdnx/Distribution, 这里显式写出
+          # 只为让"提交目标"在工作流上一眼可见; 改动须与脚本常量保持一致
+          NEWS_FLASH_TARGET_OWNER: acdnx
+          NEWS_FLASH_TARGET_REPO: Distribution
           # 定时触发时 inputs 上下文为空, 以下各项都会解析成空串,
           # 脚本端按"空串=未设置"回退到内置默认(来源=全部, 日期=不限,
           # limit=0 不限, 删除开关=开), 因此无需在此处写兜底表达式
