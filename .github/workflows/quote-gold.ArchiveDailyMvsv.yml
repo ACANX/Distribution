@@ -17,7 +17,7 @@
 #   归档走 Contents API, 用的是 Secret GIT_COMMIT_TOKEN(需本仓库 quote-gold 的
 #   contents:write 权限), 不依赖 checkout 自带的 GITHUB_TOKEN, 故 permissions 只读。
 #   注意 Contents API 提交不会更新本地检出, 校验远端结果须实时查远端。
-name: QuoteGoldArchiveDailyMvsv
+name: quote-gold.ArchiveDailyMvsv
 
 on:
   schedule:
