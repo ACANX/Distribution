@@ -70,6 +70,13 @@ OUT_ENCODING = "utf-8"
 # 目录, 而工作目录可能是仓库根, 因此显式用脚本所在目录)
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
+# 复用上一级的公共日志模块(与 news 线其余脚本共用, 位于 .github/Python/)
+_LIB_DIR = os.path.dirname(_HERE)
+if _LIB_DIR not in sys.path:
+    sys.path.insert(0, _LIB_DIR)
+
+from ConsoleLog import enableLogTimestamps  # noqa: E402
+
 # 内置默认配置
 DEFAULT_CONFIG_FILE = "FlashFutuConvert.json"
 DEFAULT_BASE_DIR = "Data"
@@ -313,6 +320,9 @@ def collectYearDirs(data_root: str, year: Optional[str]) -> List[str]:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    # 之后每一行输出都带上东八区行首时间戳
+    enableLogTimestamps()
+
     parser = argparse.ArgumentParser(
         description="将富途快讯 JSON 归档转换为 JSONL(增量合并, 按 id 去重)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,

@@ -4,8 +4,18 @@
 import glob
 import json
 import os
+import sys
+
+# 复用上一级的公共日志模块(.github/Python/ConsoleLog.py)
+_LIB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _LIB_DIR not in sys.path:
+    sys.path.insert(0, _LIB_DIR)
 
 from _fix_flashfutu_tmp import fix_json_text
+from ConsoleLog import enableLogTimestamps  # noqa: E402
+
+# 本脚本无 main(), 是模块级直接执行, 故在此处立即装上
+enableLogTimestamps()
 
 d = "Data/Finv/News/FlashFutu/2026"
 REQUIRED = {"id", "time", "news_type", "url", "content", "title", "dt"}

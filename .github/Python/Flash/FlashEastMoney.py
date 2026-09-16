@@ -31,12 +31,21 @@
 import argparse
 import json
 import logging
+import os
 import sys
 import time
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Union
+
+# 复用上一级的公共日志模块(.github/Python/ConsoleLog.py):
+# 本脚本位于 .github/Python/Flash/, 而工作目录可能是仓库根, 故显式补上一级路径
+_LIB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _LIB_DIR not in sys.path:
+    sys.path.insert(0, _LIB_DIR)
+
+from ConsoleLog import enableLogTimestamps  # noqa: E402
 
 # 快讯接口地址(去掉 query 部分, 参数用 dict 拼装)
 FASTNEWS_URL = "https://np-weblist.eastmoney.com/comm/web/getFastNewsList"
@@ -495,6 +504,9 @@ def writeJsonl(
 # ---------------------------------------------------------------------------
 
 def main(argv: Optional[List[str]] = None) -> int:
+    # 之后每一行输出都带上东八区行首时间戳
+    enableLogTimestamps()
+
     parser = argparse.ArgumentParser(
         description="东方财富 7x24 快讯抓取工具: 最新一页 / 全天快讯 / 导出 jsonl",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,

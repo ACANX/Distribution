@@ -84,6 +84,7 @@
     **每一行最左侧**都带东八区(UTC+8)时间戳, 格式 yyMMdd.HHmmss.SSS:
         260916.105958.123 提交端 acdnx/Distribution 上已有相同内容(sha 相同), 无需提交
     注意 GitHub Actions 页面自身标注的是 UTC 时间, 与本时间戳相差 8 小时, 别对错表。
+    实现见 .github/Python/ConsoleLog.py —— news 线各脚本共用同一个模块。
 
     凡涉及"哪个仓库"一律写全 owner/repo。本脚本牵涉两个**同名**仓库
     (ACANX/Distribution 与 acdnx/Distribution), 只写 repo 名会完全无法区分,
@@ -109,7 +110,7 @@ import re
 import sys
 import urllib.parse
 from collections import namedtuple
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 # 复用 GitHubCommitContent 的 HTTP 请求 / 认证头 / sha 查询 / 仓库身份解析
@@ -128,6 +129,9 @@ from GitHubCommitContent import (  # noqa: E402
     commit_content_file,
     load_owner_repo_from_git_config,
 )
+
+# 控制台行首时间戳(与 news 线其余脚本共用, 位于同一 .github/Python/)
+from ConsoleLog import enableLogTimestamps  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # 常量
@@ -262,62 +266,6 @@ def localBlobSha(abs_path: str) -> Optional[str]:
 # ---------------------------------------------------------------------------
 # 远端操作
 # ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# 日志时间戳
-# ---------------------------------------------------------------------------
-
-# 日志行首时间戳: yyMMdd.HHmmss.SSS, 如 260916.105958.123
-# 时区固定北京时间(UTC+8), 与脚本内 KeepJsonDays/cron 注释的口径一致。
-# 注意 GitHub Actions 页面自身显示的是 UTC, 两者相差 8 小时, 别对错时间。
-LOG_TS_FORMAT = "%y%m%d.%H%M%S"
-BEIJING_TZ = timezone(timedelta(hours=8))
-
-
-def logTimeStamp() -> str:
-    """当前北京时间的 yyMMdd.HHmmss.SSS 字符串。"""
-    now = datetime.now(BEIJING_TZ)
-    return "%s.%03d" % (now.strftime(LOG_TS_FORMAT), now.microsecond // 1000)
-
-
-class TimestampedStream:
-    """给每条日志行最左侧加时间戳的 stdout/stderr 代理。
-
-    print() 会分多次 write(先正文, 再单独一个 "\\n"), 若在每次 write 前拼前缀,
-    时间戳会落到行中间。故此处按行缓冲: 攒到 "\\n" 才吐出一整行, 前缀打在真正的
-    行首; 每个换行各取一次时间, 同一行内的分段 write 共用该行开头的那一个时间。
-    """
-
-    def __init__(self, stream: Any) -> None:
-        self._stream = stream
-        self._pending = ""
-
-    def write(self, text: str) -> int:
-        self._pending += text
-        while "\n" in self._pending:
-            line, self._pending = self._pending.split("\n", 1)
-            self._stream.write("%s %s\n" % (logTimeStamp(), line))
-        return len(text)
-
-    def flush(self) -> None:
-        # 收尾: 无换行结尾的残留也要落下, 否则会丢掉最后一行
-        if self._pending:
-            self._stream.write("%s %s\n" % (logTimeStamp(), self._pending))
-            self._pending = ""
-        self._stream.flush()
-
-    def __getattr__(self, name: str) -> Any:
-        # isatty/encoding/fileno 等其余属性一律透传给被包装的流
-        return getattr(self._stream, name)
-
-
-def enableLogTimestamps() -> None:
-    """给 stdout/stderr 装上行首时间戳(幂等, 重复调用不会套娃)。"""
-    if not isinstance(sys.stdout, TimestampedStream):
-        sys.stdout = TimestampedStream(sys.stdout)
-    if not isinstance(sys.stderr, TimestampedStream):
-        sys.stderr = TimestampedStream(sys.stderr)
-
 
 def deleteBranchFile(branch: str, path_key: str, token: str,
                      owner: str, repo: str,

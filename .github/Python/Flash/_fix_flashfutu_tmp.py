@@ -21,6 +21,15 @@ import argparse
 import glob
 import json
 import os
+import sys
+
+# 复用上一级的公共日志模块(.github/Python/ConsoleLog.py):
+# 本脚本位于 .github/Python/Flash/, 而工作目录可能是仓库根, 故显式补上一级路径
+_LIB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _LIB_DIR not in sys.path:
+    sys.path.insert(0, _LIB_DIR)
+
+from ConsoleLog import enableLogTimestamps  # noqa: E402
 
 END_CHARS = set(",}]:")
 
@@ -83,6 +92,9 @@ def fix_json_text(text):
 
 
 def main() -> int:
+    # 之后每一行输出都带上东八区行首时间戳
+    enableLogTimestamps()
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true",
                         help="写回原文件(默认只验证不写回)")

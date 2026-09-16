@@ -45,6 +45,12 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
+# 再补上上一级 .github/Python/, 供公共日志模块 ConsoleLog 使用
+_LIB_DIR = os.path.dirname(_HERE)
+if _LIB_DIR not in sys.path:
+    sys.path.insert(0, _LIB_DIR)
+
+from ConsoleLog import enableLogTimestamps  # noqa: E402
 from FlashEastMoney import getDayNews, writeJsonl  # noqa: E402
 
 # 内置默认配置
@@ -121,6 +127,9 @@ def buildTargetPath(base_dir: str, day: datetime) -> str:
 
 
 def main(argv: Optional[list] = None) -> int:
+    # 之后每一行输出都带上东八区行首时间戳
+    enableLogTimestamps()
+
     parser = argparse.ArgumentParser(
         description="采集前一天东方财富快讯并保存为按日期命名的 jsonl 文件",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
