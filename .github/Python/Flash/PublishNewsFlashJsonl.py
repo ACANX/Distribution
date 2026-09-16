@@ -80,6 +80,19 @@
     --dry-run     : 只打印将要执行的动作, 不提交也不删除
     --log         : 打印每个文件的处理详情
 
+日志格式:
+    **每一行最左侧**都带东八区(UTC+8)时间戳, 格式 yyyyMMdd.HHmmss.SSS:
+        20260916.105958.123 提交端 acdnx/Distribution 上已有相同内容(sha 相同), 无需提交
+    注意 GitHub Actions 页面自身标注的是 UTC 时间, 与本时间戳相差 8 小时, 别对错表。
+
+    凡涉及"哪个仓库"一律写全 owner/repo。本脚本牵涉两个**同名**仓库
+    (ACANX/Distribution 与 acdnx/Distribution), 只写 repo 名会完全无法区分,
+    所以日志里改用"源端 / 提交端"指代:
+        源端   : 本仓库。读它的文件, 搬运成功后删除 —— 且删两次:
+                 先经 Contents API 删远端(持久生效), 再 os.remove 清理 runner
+                 里 checkout 出来的工作副本(同属该仓库, 远端删除不会连带删掉它)
+        提交端 : 归档端仓库。只写不删
+
 环境要求:
     - Python 3.8+, 仅标准库;
     - 环境变量 GIT_COMMIT_TOKEN, **需同时具备本仓库与归档端仓库的 contents:write
@@ -96,7 +109,7 @@ import re
 import sys
 import urllib.parse
 from collections import namedtuple
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 # 复用 GitHubCommitContent 的 HTTP 请求 / 认证头 / sha 查询 / 仓库身份解析
@@ -250,6 +263,62 @@ def localBlobSha(abs_path: str) -> Optional[str]:
 # 远端操作
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# 日志时间戳
+# ---------------------------------------------------------------------------
+
+# 日志行首时间戳: yyyyMMdd.HHmmss.SSS, 如 20260916.105958.123
+# 时区固定北京时间(UTC+8), 与脚本内 KeepJsonDays/cron 注释的口径一致。
+# 注意 GitHub Actions 页面自身显示的是 UTC, 两者相差 8 小时, 别对错时间。
+LOG_TS_FORMAT = "%Y%m%d.%H%M%S"
+BEIJING_TZ = timezone(timedelta(hours=8))
+
+
+def logTimeStamp() -> str:
+    """当前北京时间的 yyyyMMdd.HHmmss.SSS 字符串。"""
+    now = datetime.now(BEIJING_TZ)
+    return "%s.%03d" % (now.strftime(LOG_TS_FORMAT), now.microsecond // 1000)
+
+
+class TimestampedStream:
+    """给每条日志行最左侧加时间戳的 stdout/stderr 代理。
+
+    print() 会分多次 write(先正文, 再单独一个 "\\n"), 若在每次 write 前拼前缀,
+    时间戳会落到行中间。故此处按行缓冲: 攒到 "\\n" 才吐出一整行, 前缀打在真正的
+    行首; 每个换行各取一次时间, 同一行内的分段 write 共用该行开头的那一个时间。
+    """
+
+    def __init__(self, stream: Any) -> None:
+        self._stream = stream
+        self._pending = ""
+
+    def write(self, text: str) -> int:
+        self._pending += text
+        while "\n" in self._pending:
+            line, self._pending = self._pending.split("\n", 1)
+            self._stream.write("%s %s\n" % (logTimeStamp(), line))
+        return len(text)
+
+    def flush(self) -> None:
+        # 收尾: 无换行结尾的残留也要落下, 否则会丢掉最后一行
+        if self._pending:
+            self._stream.write("%s %s\n" % (logTimeStamp(), self._pending))
+            self._pending = ""
+        self._stream.flush()
+
+    def __getattr__(self, name: str) -> Any:
+        # isatty/encoding/fileno 等其余属性一律透传给被包装的流
+        return getattr(self._stream, name)
+
+
+def enableLogTimestamps() -> None:
+    """给 stdout/stderr 装上行首时间戳(幂等, 重复调用不会套娃)。"""
+    if not isinstance(sys.stdout, TimestampedStream):
+        sys.stdout = TimestampedStream(sys.stdout)
+    if not isinstance(sys.stderr, TimestampedStream):
+        sys.stderr = TimestampedStream(sys.stderr)
+
+
 def deleteBranchFile(branch: str, path_key: str, token: str,
                      owner: str, repo: str,
                      api_base: str = DEFAULT_API_BASE) -> Dict[str, Any]:
@@ -270,13 +339,15 @@ def deleteBranchFile(branch: str, path_key: str, token: str,
     :return: dict {"success": bool, "already_gone": bool, "message": str|None}
     """
     def fail(msg: str) -> Dict[str, Any]:
-        print("  ❌ 删除失败: %s@%s %s —— %s" % (repo, branch, path_key, msg))
+        print("  ❌ 从 %s/%s@%s 删除失败: %s —— %s"
+              % (owner, repo, branch, path_key, msg))
         return {"success": False, "already_gone": False, "message": msg}
 
     sha = _get_file_sha(api_base, owner, repo, path_key, branch, token, 30)
     if sha is None:
         # 远端已无该文件(可能是上一次运行已删除), 视为达成目标
-        print("  ⚠️ 远端已无该文件(可能已删除), 视为已处理: %s" % path_key)
+        print("  ⚠️ %s/%s@%s 上已无该文件(可能上次已删), 视为已处理: %s"
+              % (owner, repo, branch, path_key))
         return {"success": True, "already_gone": True, "message": None}
 
     url = "%s/%s/%s/contents/%s" % (
@@ -298,8 +369,8 @@ def deleteBranchFile(branch: str, path_key: str, token: str,
     except ValueError:
         pass
     if status is not None and 200 <= status < 300:
-        print("  ✅ 远端删除成功: %s@%s %s(HTTP %s)"
-              % (repo, branch, path_key, status))
+        print("  ✅ 已从源端 %s/%s@%s 删除(远端持久生效, HTTP %s): %s"
+              % (owner, repo, branch, status, path_key))
         return {"success": True, "already_gone": False, "message": None}
     reason = "HTTP %s" % status
     if isinstance(parsed, dict) and parsed.get("message"):
@@ -384,6 +455,8 @@ def collectTasks(archive_dir: str, repo_root: str,
 
 def main(argv: Optional[List[str]] = None) -> int:
     _ensure_console_utf8()
+    # 之后再打印的每一行都会带上东八区(yyyyMMdd.HHmmss.SSS)行首时间戳
+    enableLogTimestamps()
 
     parser = argparse.ArgumentParser(
         description="把新闻快讯 jsonl 按规范命名搬运到归档端仓库, 并清理本仓库原文件",
@@ -468,11 +541,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     print("源/删除端  : %s/%s(本仓库, 搬运成功后删除原文件)"
           % (src_owner, src_repo))
     print("提交端     : %s/%s(归档端仓库)" % (tgt_owner, tgt_repo))
+    if src_repo == tgt_repo:
+        print("提示: 源端与提交端仓库名相同(%s), 只有 owner 不同 —— 下文日志一律"
+              "写全 owner/repo, 避免看混" % src_repo)
     if (src_owner.lower(), src_repo.lower()) == (tgt_owner.lower(), tgt_repo.lower()):
         print("⚠️ 源端与提交端是同一个仓库: 本脚本将只在单个仓库内改名, "
               "不会发生跨仓库搬运(如非本意, 请检查 --target-owner / --target-repo)")
-    print("删除开关   : %s" % ("开(提交成功后删除原文件)" if enable_delete
-                              else "关(只提交, 保留原文件)"))
+    print("删除开关   : %s" % ("开(提交成功后删除源端原文件)" if enable_delete
+                              else "关(只提交, 保留源端原文件)"))
     print("运行模式   : %s" % ("dry-run(不做任何写操作)" if args.dry_run else "实际执行"))
 
     # Token 只在非 dry-run 时需要(提交/删除都是写操作)
@@ -512,7 +588,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             if t.rel_src != t.rel_dst:
                 print("    将改名为: %s" % t.rel_dst)
             else:
-                print("    名称不变, 仅搬运到归档端")
+                print("    名称不变, 仅搬到提交端 %s/%s" % (tgt_owner, tgt_repo))
 
         # 1) 幂等判断: 算本地 blob sha, 与归档端同路径文件的 sha 比较(不下载远端)
         need_commit = True
@@ -524,19 +600,24 @@ def main(argv: Optional[List[str]] = None) -> int:
                                        t.rel_dst, branch, token, 30)
             if local_sha and remote_sha and local_sha == remote_sha:
                 need_commit = False
-                print("    归档端已存在且内容一致(sha 相同), 跳过提交: %s" % t.rel_dst)
+                print("    提交端 %s/%s 上已有相同内容(sha 相同), 无需提交"
+                      % (tgt_owner, tgt_repo))
                 already_ok.append(t.rel_dst)
             elif remote_sha is None:
-                print("    归档端不存在, 将新建: %s" % t.rel_dst)
+                print("    提交端 %s/%s 上不存在, 将新建: %s"
+                      % (tgt_owner, tgt_repo, t.rel_dst))
             else:
-                print("    归档端已存在但内容有差异, 将更新: %s" % t.rel_dst)
+                print("    提交端 %s/%s 上已存在但内容有差异, 将更新: %s"
+                      % (tgt_owner, tgt_repo, t.rel_dst))
         else:
-            print("    (dry-run 且无令牌) 未校验归档端, 假定需要提交: %s" % t.rel_dst)
+            print("    (dry-run 且无令牌) 未校验提交端 %s/%s, 假定需要提交: %s"
+                  % (tgt_owner, tgt_repo, t.rel_dst))
 
         if args.dry_run:
             action = "提交" if need_commit else "跳过提交"
-            print("    (dry-run) %s -> 随后%s删除本仓库原文件"
-                  % (action, "会" if enable_delete else "不会"))
+            print("    (dry-run) %s -> 随后%s从源端 %s/%s 删除原文件"
+                  % (action, "会" if enable_delete else "不会",
+                     src_owner, src_repo))
             continue
 
         # 2) 提交到归档端(先提交, 成功才谈删除)
@@ -557,7 +638,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         # 3) 删除本仓库的源文件(提交成功是硬前提; 上面已 continue 掉失败分支)
         if not enable_delete:
-            print("    🕐 已送达, 待删除(删除开关未开启): %s" % t.rel_src)
+            print("    🕐 已送达提交端 %s/%s, 源端 %s/%s 上待删除(删除开关未开启): %s"
+                  % (tgt_owner, tgt_repo, src_owner, src_repo, t.rel_src))
             kept.append("%s: 待删除(开关关闭)" % t.rel_src)
             continue
 
@@ -565,12 +647,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         if not result["success"]:
             delete_failed.append("%s: %s" % (t.rel_src, result["message"]))
             continue
-        # 远端删掉后本地同步删除, 保持工作区与远端一致
+        # 远端删掉后同步清理本地工作副本。二者同属源端仓库: runner 里是
+        # actions/checkout 出来的独立拷贝, 远端删除不会连带删掉它, 不清理的话
+        # 工作区会留着一个"远端已不存在"的文件继续往下走。
         try:
             os.remove(t.abs_src)
-            print("    ✅ 本地删除成功: %s" % t.rel_src)
+            print("    ✅ 本地工作副本已同步移除(同为源端 %s/%s, 仅清理 runner "
+                  "工作区, 不影响远端): %s" % (src_owner, src_repo, t.rel_src))
         except OSError as e:
-            print("    ⚠️ 本地删除失败(远端已删): %s" % e)
+            print("    ⚠️ 本地工作副本移除失败(远端已删, 不影响最终结果): %s" % e)
         deleted.append(t.rel_src)
 
     # --- 汇总 ---
