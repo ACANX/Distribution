@@ -4,7 +4,7 @@
 #     下按日归档的 JSON 数组文件增量转换为 JSONL, 保存到 Archive/Finv/News/FlashFutu/
 #   - 手动触发: Actions 页 Run workflow
 # 运行分支: 检出 news 分支(脚本与源数据均在 news), 转换结果提交并推回 news
-name: FlashFutuConvert
+name: news.FlashFutuConvert
 
 on:
   schedule:

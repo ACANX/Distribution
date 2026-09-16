@@ -40,7 +40,7 @@
 #   - 依赖仓库 Secret GIT_COMMIT_TOKEN, **需同时具备本仓库与 acdnx/Distribution
 #     的 contents:write 权限**(前者用于删除源文件, 后者用于写入规范名文件);
 #     令牌只经环境变量注入脚本, 不写入任何源码或日志。
-name: PublishNewsFlashJsonl
+name: news.PublishNewsFlashJsonl
 
 on:
   schedule:
@@ -72,7 +72,7 @@ permissions:
 
 # 同一时刻只允许一个实例: 提交与删除不是原子操作, 两次运行并发会互相踩
 concurrency:
-  group: PublishNewsFlashJsonl
+  group: news.PublishNewsFlashJsonl
   cancel-in-progress: false
 
 jobs:

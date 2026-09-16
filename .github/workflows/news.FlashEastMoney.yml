@@ -2,8 +2,8 @@
 # 触发方式:
 #   - 每天 UTC 16:45(北京时间 00:45)自动运行, 采集"前一天"快讯
 #   - 手动触发: Actions 页 Run workflow, 可指定采集日期
-# 运行分支: 固定使用 news 分支(定时与手动一致), 脚本从 news 检出, 提交推回 FQ
-name: FlashEastMoneyDaily
+# 运行分支: 固定使用 news 分支(定时与手动一致), 脚本从 news 检出, 提交推回 news
+name: news.FlashEastMoney
 
 on:
   schedule:
