@@ -1,0 +1,94 @@
+# cc-sse.DailyJsonlArchive —— CC/SSE 流量镜像 JSON 按日聚合为 JSONL 归档
+# =============================================================================
+#
+# 每日把 cc-sse 分支上 Data/CC/SSE/ 下采集端落盘的 CC 流量镜像批次
+# (文件名 yyyyMMdd_HHmmss[_SSS]_{type}.json, type ∈ CCRequestHeader /
+# CCRequestBody / CCResponseHeader / CCResponseBody)封装成一行一条记录,
+# 按文件名时间 dt(17 位 yyyyMMddHHmmssSSS, 文件名不带毫秒时补 "000")的
+# 日历日分组落盘为:
+#
+#   Archive/CC/SSE/CC_SSE_CCSSEStreamReqResp_{yyyyMMdd}.jsonl
+#
+# 行结构 {"dt":"20260618224143000","type":"CCRequestBody","data": ...}:
+# CCResponseBody 采集的是 SSE 流原文而不是 JSON, 按 SSE 规范拆成事件数组
+# [{"event":"message_start","data":{...}}, ...](单事件也是数组)存放; 其余三种
+# 直接放解析后的 JSON 对象。同一 dt 内按 请求头 → 请求体 → 响应头 → 响应体
+# 的固定次序排列, dt 之间按时间升序。
+#
+# 转换脚本 .github/Python/CC/CCSSEJsonlConvert.py 每次以源文件为准重算目标
+# JSONL(同 dt/type 覆盖, 其余既有行原样保留), 因此可放心定期重跑: 内容无变化
+# 则不提交(不产生空提交)。
+#
+# 目标 JSONL 的写入与 Data/CC/SSE 源批次的删除**一律走 GitHub Contents API**
+# (PUT / DELETE contents, 不 git push): 源批次在其记录确认收录进目标 JSONL
+# 之后才删除(远端已不存在 → 404, 按幂等成功处理), 文件名不合模式 / 读取或解析
+# 失败 / 未确认收录的文件一律保留; 提交或删除失败不静默(退出码 1)。
+# 令牌经 secrets.GIT_COMMIT_TOKEN 注入(与 apm / quote-gold 线同一密钥)。
+#
+# 注意: 本工作流 YAML 放在默认分支 dev(schedule 只在默认分支生效),
+# 脚本与数据都在 cc-sse 分支, checkout 的 ref 指向 cc-sse; 命名沿用
+# <分支>.<用途>.yml 规范。
+
+name: cc-sse.DailyJsonlArchive
+
+on:
+  schedule:
+    # 北京时间 02:37 (UTC 18:37)。避开整点/半点, 也错开其它每日任务
+    # (03:40 / 03:45 / 04:10 / 05:20), 并留出采集端晚间写入后的落定时间
+    - cron: "37 18 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "只推演将提交/删除什么, 不调用 API、不改动任何文件"
+        type: boolean
+        default: false
+      keep_source:
+        description: "保留 Data/CC/SSE 下的源文件(默认删除已确认收录的)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read          # 文件读写删都走 Contents API(令牌另配), 不需要 git 写权限
+
+concurrency:
+  group: CcSseDailyJsonlArchive
+  cancel-in-progress: false
+
+jobs:
+  convert-and-clean:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出仓库(cc-sse 分支)
+        uses: actions/checkout@v5
+        with:
+          ref: cc-sse
+          # 目标 JSONL 的基线取工作区副本(Contents API 的 GET 对 >1MB 文件
+          # 不再返回 content), 不需要历史, 浅检出即可
+          fetch-depth: 1
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: 运行按日聚合脚本(Contents API 提交与删除)
+        shell: bash
+        env:
+          GIT_COMMIT_TOKEN: ${{ secrets.GIT_COMMIT_TOKEN }}
+          # 与脚本内置默认一致, 显式写出防止漂移(改动须与脚本同步)
+          CC_SSE_OWNER: ACANX
+          CC_SSE_REPO: Distribution
+          CC_SSE_BRANCH: cc-sse
+        run: |
+          ARGS=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ inputs.dry_run }}" = "true" ]; then
+              ARGS="$ARGS --dry-run"
+            fi
+            if [ "${{ inputs.keep_source }}" = "true" ]; then
+              ARGS="$ARGS --keep-source"
+            fi
+          fi
+          python3 .github/Python/CC/CCSSEJsonlConvert.py $ARGS
