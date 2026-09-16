@@ -23,6 +23,9 @@ MergeApmPage —— Page 埋点 Data 侧批次按日聚合为 JSONL(Contents API
     3. Archive 侧旧的 {时间戳}.json 合并产物(20260425164xxx.json)已删除:
        其全部记录经逐行比对确认已收录进按日 JSONL(#23 首轮全量转换),
        留着只会与新产物重复混淆。
+    4. 新增 Data 侧源文件清理: 批次文件的全部记录确认收录进远端 JSONL 后,
+       由前置工序经 Contents API 删除(默认开启, --keep-source 可关闭),
+       避免 Data 目录无限膨胀(逐记录核对, 有未归档记录的文件不删)。
 
     聚合/去重/分组口径与 .github/Python/APM/APMJsonlConvert.py(主转换)完全
     一致: 按记录 ts(13 位毫秒时间戳)换算北京时间日历日分组(**文件名日期
