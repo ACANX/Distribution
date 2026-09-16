@@ -20,8 +20,9 @@ MergeApmPage —— Page 埋点 Data 侧批次按日聚合为 JSONL(Contents API
            Archive/Meta/WebMMCP/APM/Page/APM_Page_MetaCmsPage_DAY_ACANX_{yyyyMMdd}.jsonl
        并经 GitHub Contents API 提交到 apm 分支(文件修改/新增一律走
        Contents API, 不用 git push)。
-    3. Archive 侧旧的 {时间戳}.json 合并产物维持原样不动, 但不再滚动进新的
-       JSONL —— 那部分存量已由 apm.DailyJsonlArchive 的首轮全量转换覆盖。
+    3. Archive 侧旧的 {时间戳}.json 合并产物(20260425164xxx.json)已删除:
+       其全部记录经逐行比对确认已收录进按日 JSONL(#23 首轮全量转换),
+       留着只会与新产物重复混淆。
 
     聚合/去重/分组口径与 .github/Python/APM/APMJsonlConvert.py(主转换)完全
     一致: 按记录 ts(13 位毫秒时间戳)换算北京时间日历日分组(**文件名日期
