@@ -1,0 +1,102 @@
+# apm.ArchiveDailyJsonl —— APM 埋点 JSON 按日转 JSONL 归档
+# =============================================================================
+#
+# 每日把 apm 分支上 Data/Meta/WebMMCP/APM/{type}/ 与
+# Archive/Meta/WebMMCP/APM/{type}/ 下的存量及新增 JSON 数组文件(埋点批次数据,
+# 每个文件是事件对象数组)转换为 JSONL(数组元素一行一个), 按记录内 ts 字段
+# 换算北京时间日历日分组, 落盘为:
+#
+#   Archive/Meta/WebMMCP/APM/{type}/APM_{type}_{Code}_DAY_ACANX_{yyyyMMdd}.jsonl
+#   (type = API / Page, Code = MetaCms{type})
+#
+# 转换脚本 .github/Python/APM/APMJsonlConvert.py 只读源文件(不删不改任何源
+# JSON), 目标 JSONL 已存在时整行去重增量合并, 因此可放心定期重跑。
+# 转换结果提交并推回 apm 分支。
+#
+# 注意: 本工作流 YAML 放在默认分支 dev(schedule 只在默认分支生效),
+# 脚本与数据都在 apm 分支, checkout 的 ref 指向 apm; 命名沿用
+# <分支>.<用途>.yml 规范。
+
+name: apm.ArchiveDailyJsonl
+
+on:
+  schedule:
+    # 北京时间 04:10 (UTC 20:10)。避开整点, 减少 GitHub 定时任务拥堵;
+    # 错峰于其它每日任务(03:45 / 05:20)
+    - cron: "10 20 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "只统计将要写入的行数, 不写文件不提交"
+        type: boolean
+        default: false
+      apm_type:
+        description: "只转换指定一级子目录(如 API 或 Page), 留空=全部"
+        type: string
+        default: ""
+      date:
+        description: "只处理记录时间(北京时间)为该日(YYYYMMDD)的记录, 留空=不限"
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ApmArchiveDailyJsonl
+  cancel-in-progress: false
+
+jobs:
+  convert-and-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出仓库(apm 分支)
+        uses: actions/checkout@v5
+        with:
+          ref: apm
+          fetch-depth: 0
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: 运行转换脚本
+        shell: bash
+        env:
+          # workflow_dispatch 手动触发时用输入覆盖; 定时触发走脚本内置默认(全部)
+          APM_TYPE: ${{ github.event_name == 'workflow_dispatch' && inputs.apm_type || '' }}
+          APM_DATE: ${{ github.event_name == 'workflow_dispatch' && inputs.date || '' }}
+        run: |
+          ARGS=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ inputs.dry_run }}" = "true" ]; then
+              ARGS="$ARGS --dry-run"
+            fi
+            if [ -n "${{ inputs.apm_type }}" ]; then
+              for t in $(echo "${{ inputs.apm_type }}" | tr ',' ' '); do
+                ARGS="$ARGS --type $t"
+              done
+            fi
+            if [ -n "${{ inputs.date }}" ]; then
+              ARGS="$ARGS --date ${{ inputs.date }}"
+            fi
+          fi
+          python3 .github/Python/APM/APMJsonlConvert.py $ARGS
+
+      - name: 提交并推送数据(到 apm)
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # 转换产物目录(新增的 JSONL; 脚本只读源文件, 源目录不会有变更)
+          git add -A "Archive/Meta/WebMMCP/APM"
+          if git diff --cached --quiet; then
+            echo "没有新增数据, 跳过提交"
+          else
+            git commit -m "chore(data): APM埋点JSON按日转JSONL $(date +%Y-%m-%d)"
+            # 固定推送到 apm 分支
+            git push origin apm
+          fi
