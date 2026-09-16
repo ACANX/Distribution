@@ -1,0 +1,84 @@
+# QuoteGold 行情按北京时间自然日归档为 .mvsv
+#
+# 触发方式:
+#   - 每天 UTC 17:20(北京时间次日 01:20)自动运行, 归档 D-6 … D-1 共 6 个整天
+#   - 手动触发: Actions 页 Run workflow, 可勾选 dry_run 先干跑一次看结果
+#
+# 运行分支: 固定使用 quote-gold(定时与手动一致)。脚本从 quote-gold 检出, 归档文件经
+# GitHub Contents API 提交回 **quote-gold 同分支**的
+# Archive/Finv/QuoteGold/Day/{Region}_{Market}/{Code}/ 下。
+#
+# 为什么定时放在北京时间 01:20 而不是 00:00:
+#   归档窗口上界是"今日 BJT 00:00", 只有跨过零点 D-1 才算完整日。留 1 小时余量等上游
+#   把 D-1 的尾巴写进 Latest.txt。即便上游迟到, 脚本每次都会重刷整个 6 天窗口, 因此
+#   迟到数据会在之后 6 次运行内自动收敛, 无需人工补数。
+#
+# 写权限说明:
+#   归档走 Contents API, 用的是 Secret GIT_COMMIT_TOKEN(需本仓库 quote-gold 的
+#   contents:write 权限), 不依赖 checkout 自带的 GITHUB_TOKEN, 故 permissions 只读。
+#   注意 Contents API 提交不会更新本地检出, 校验远端结果须实时查远端。
+name: QuoteGoldArchiveDailyMvsv
+
+on:
+  schedule:
+    # 北京时间 01:20 (UTC 17:20)。避开整点, 减少 GitHub 定时任务拥堵
+    - cron: "20 17 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "干跑: 只打印将要写入的内容, 不实际提交"
+        type: boolean
+        default: false
+
+# 同一时间只允许一个该工作流运行, 避免并发触发时互相覆盖同一天的归档
+concurrency:
+  group: QuoteGoldArchiveDailyMvsv
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  archive-daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # 第一步: 无论工作流从哪个分支被触发, 都切换到 quote-gold
+      - name: 检出 quote-gold 分支
+        uses: actions/checkout@v5
+        with:
+          ref: quote-gold
+
+      - name: 配置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      # 脚本当前仅依赖 Python 标准库; 若未来在 .github/Python/QuoteGold/ 下新增
+      # requirements.txt, 本步骤会自动安装其第三方依赖
+      - name: 安装第三方依赖(如有)
+        if: hashFiles('.github/Python/QuoteGold/requirements.txt') != ''
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r .github/Python/QuoteGold/requirements.txt
+
+      - name: 按日归档为 .mvsv
+        env:
+          # Contents API 令牌。只经环境变量注入脚本, 不写入任何源码或日志
+          GIT_COMMIT_TOKEN: ${{ secrets.GIT_COMMIT_TOKEN }}
+          # 提交目标仓库身份。脚本内置默认值同为 ACANX/Distribution @ quote-gold,
+          # 这里显式写出只为让"提交目标"在工作流上一眼可见; 改动须与脚本常量保持一致
+          GOLD_ARCHIVE_OWNER: ACANX
+          GOLD_ARCHIVE_REPO: Distribution
+          GOLD_ARCHIVE_BRANCH: quote-gold
+          # workflow_dispatch 的布尔输入; 定时触发时为空串, 走正常归档
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          if [ "${DRY_RUN}" = "true" ]; then
+            echo "::notice::dry_run 已开启, 本次不提交任何文件"
+            python3 .github/Python/QuoteGold/ArchiveDailyMvsv.py --dry-run
+          else
+            python3 .github/Python/QuoteGold/ArchiveDailyMvsv.py
+          fi
