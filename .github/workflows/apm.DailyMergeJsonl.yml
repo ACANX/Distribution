@@ -7,11 +7,14 @@
 #
 #   Archive/Meta/WebMMCP/APM/{type}/APM_{type}_{Code}_DAY_ACANX_{yyyyMMdd}.jsonl
 #
-# 经 GitHub Contents API 提交到 apm 分支(文件修改/新增一律走 Contents API,
+# 经 GitHub Contents API 提交到 apm 分支(文件修改/新增/删除一律走 Contents API,
 # 不用 git push, 因此 permissions 只需 contents: read):
 #   - 令牌经 secrets.GIT_COMMIT_TOKEN 注入(与 quote-gold 线同一密钥);
 #   - 每(类型, 日期)至多一个提交, 无新增记录的分组跳过提交;
-#   - 409(sha 过期)与网络抖动自动重试。
+#   - 409(sha 过期)与网络抖动自动重试;
+#   - 清理源文件: Data 侧批次在**其全部记录都确认收录进远端 JSONL 之后**经
+#     Contents API 删除(DELETE contents, 幂等), 同样不产生空提交; 逐记录核对,
+#     有未归档记录/无法归档记录的文件保留, 删除失败不静默(退出码 1)。
 #
 # 与主转换的衔接: 本工作流完成后经 workflow_run 触发 apm.DailyJsonlArchive
 # —— 前置工序已把当日数据提前经 Contents API 写入远端, 主转换在 checkout
@@ -41,6 +44,10 @@ on:
     inputs:
       dry_run:
         description: "只统计将要提交的行数, 不实际提交"
+        type: boolean
+        default: false
+      keep_source:
+        description: "保留 Data 侧源文件(默认删除已确认收录进远端 JSONL 的源文件)"
         type: boolean
         default: false
       date:
@@ -85,6 +92,9 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             if [ "${{ inputs.dry_run }}" = "true" ]; then
               ARGS="$ARGS --dry-run"
+            fi
+            if [ "${{ inputs.keep_source }}" = "true" ]; then
+              ARGS="$ARGS --keep-source"
             fi
             if [ -n "${{ inputs.date }}" ]; then
               for d in $(echo "${{ inputs.date }}" | tr ',' ' '); do
