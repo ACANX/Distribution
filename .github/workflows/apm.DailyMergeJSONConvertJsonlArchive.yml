@@ -26,7 +26,7 @@
 #   2. schedule: 北京 04:10 的定时跑(双保险, 前置已处理过则 0 新增跳过);
 #   3. workflow_dispatch: 手动带参运行。
 
-name: apm.DailyJsonlArchive
+name: apm.SingleJSONMergeAndConvertJSONLDayArchive
 
 on:
   schedule:
