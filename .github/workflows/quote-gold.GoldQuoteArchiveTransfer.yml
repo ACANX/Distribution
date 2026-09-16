@@ -24,7 +24,7 @@
 # 注意 schedule 只在默认分支 dev 上生效; actions/checkout 的 ref 指向脚本
 # 实际所在的 quote-gold 分支。
 
-name: quote-gold.PublishToArchive
+name: quote-gold.GoldQuoteArchiveTransfer
 
 on:
   schedule:
