@@ -1,43 +1,58 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-新闻快讯 JSONL 规范命名发布(PublishNewsFlashJsonl)
+新闻快讯 JSONL 规范命名搬运(PublishNewsFlashJsonl)
 ==================================================
 
 作用:
-    把 Archive/Finv/News/ 下两个快讯归档目录中"历史遗留的裸名 jsonl"按规范
-    命名提交到远端 news 分支的同一目录, 提交成功后删除原文件:
+    把本仓库(采集暂存端) Archive/Finv/News/ 下两个快讯归档目录里的 jsonl
+    文件, 按规范命名搬运到**另一个仓库**(归档端)的同一目录下, 搬运成功后
+    删除本仓库的原文件:
 
-        Archive/Finv/News/FlashFutu/<year>/<yyyymmdd>.jsonl
-          -> Archive/Finv/News/FlashFutu/<year>/News_Flash_FlashFutu_DAY_FT_<yyyymmdd>.jsonl
+        本仓库  Archive/Finv/News/FlashFutu/<year>/<yyyymmdd>.jsonl
+        归档端  Archive/Finv/News/FlashFutu/<year>/News_Flash_FlashFutu_DAY_FT_<yyyymmdd>.jsonl
 
-        Archive/Finv/News/FlashEastMoney/<year>/<yyyymmdd>.jsonl
-          -> Archive/Finv/News/FlashEastMoney/<year>/News_Flash_FlashEastMoney_DAY_EM_<yyyymmdd>.jsonl
+        本仓库  Archive/Finv/News/FlashEastMoney/<year>/<yyyymmdd>.jsonl
+        归档端  Archive/Finv/News/FlashEastMoney/<year>/News_Flash_FlashEastMoney_DAY_EM_<yyyymmdd>.jsonl
 
     上游的采集/转换脚本(FlashFutuConvertJSONToJSONL.py 与 MainEastMoney.py)已改为
-    直接输出规范命名, 因此本脚本属"存量清理"性质: 仓库里不再产生裸名文件之后,
-    每次运行都无事可做(完整幂等), 留着定时跑只是兜底。
+    直接输出规范命名, 因此本脚本的源端可能是**裸名或规范名两种形态**, 二者都收
+    (见"源文件识别")。仓库里裸名清空之后本脚本仍持续生效: 后续每天上游产出的
+    规范名文件同样会被搬到归档端并清理本仓库副本。
+
+两个仓库是彼此独立的仓库(重要):
+    源/删除端 : 本脚本所在的仓库(.git 解析, 即 ACANX/Distribution), 采集暂存
+    提交端    : TARGET_OWNER / TARGET_REPO 显式指定的仓库(即 acdnx/Distribution), 归档
+
+    这两个名字**不是同一个仓库的大小写变体**, 而是两个真实存在的独立仓库
+    (API id 分别为 1182994715 与 1293253241, 网页互不重定向), 对应
+    SyncRandomFiles.py 里"经 Contents API 提交到 acdnx/Distribution ... 用于
+    新仓库的数据测试"的既有约定。因此提交目标**写死不从 .git 解析**:
+    一旦误用 .git 解析结果, 提交会写回本仓库, 与"搬到新仓库"的意图完全相反。
 
 关键行为:
-    1. 只认严格 `<yyyyMMdd>.jsonl`(8 位纯数字 + .jsonl)的裸名文件, 且日期必须
-       是合法日历日; 已带规范前缀的文件、.gitkeep 等一律跳过。
-    2. 幂等: 工作区里规范命名的目标文件已存在且内容与源文件一致时, 视为
-       "已发布", 不再重复提交(避免生成内容不变的空提交); 内容有差异则更新。
+    1. 源文件识别: 严格 `<yyyyMMdd>.jsonl`(裸名)与 `<模板>_<yyyyMMdd>.jsonl`
+       (已规范名)都收, 日期必须是合法日历日; .gitkeep 等一律跳过。
+    2. 幂等: 先算源文件的 git blob sha, 与归档端同路径文件的 sha 比较,
+       一致即视为"已送达", 不再重复提交(避免生成内容不变的空提交);
+       有差异则更新。比对走 sha, 不下载远端文件。
     3. 删除前提(照搬 SupabaseSyncMvsv 的口径): 必须先提交成功且远端写入无误,
-       才删除源文件。提交失败的文件原样保留, 留待下次重跑补齐。
-    4. 删除同时作用于远端(Contents API)与本地工作区, 两者保持一致;
+       才删除本仓库的源文件。提交失败的文件原样保留, 留待下次重跑补齐。
+    4. 删除同时作用于本仓库远端(Contents API)与本地工作区, 两者保持一致;
        删除失败只记录, 不中断后续文件。
 
 提交方式:
     复用 .github/Python/GitHubCommitContent.py, 经 GitHub Contents API 提交到
-    本仓库(.git 解析, 即 ACANX/Distribution)的 news 分支, 不依赖本地 git 提交,
-    因此不会与本仓库其它定时任务的数据推送产生 push 竞争。
+    归档端仓库的 news 分支, 不依赖本地 git 提交, 因此不会与本仓库其它定时任务的
+    数据推送产生 push 竞争。
 
 配置来源(优先级从高到低):
     1. 命令行参数(--branch / --source / --date / --limit / --keep-source 等)
     2. 环境变量 NEWS_FLASH_BRANCH / NEWS_FLASH_SOURCE / NEWS_FLASH_DATE /
-       NEWS_FLASH_LIMIT / NEWS_FLASH_ENABLE_DELETE / MAIN_ARCHIVE_DIR
+       NEWS_FLASH_LIMIT / NEWS_FLASH_ENABLE_DELETE / NEWS_FLASH_TARGET_OWNER /
+       NEWS_FLASH_TARGET_REPO / MAIN_ARCHIVE_DIR
     3. 内置默认值: branch='news', archive_dir='Archive', limit=0(不限),
+       target_owner='acdnx', target_repo='Distribution',
        enable_delete=True(见下方"删除开关")
 
 删除开关(默认开启):
@@ -50,6 +65,8 @@
                                                           [--source FlashFutu]
                                                           [--date 20260325]
                                                           [--limit 50]
+                                                          [--target-owner acdnx]
+                                                          [--target-repo Distribution]
                                                           [--keep-source]
                                                           [--force] [--dry-run] [--log]
 
@@ -57,20 +74,22 @@
                     缺省处理全部来源
     --date YYYYMMDD : 只处理该日期的文件; 缺省处理全部日期
     --limit N     : 单次最多处理 N 个文件(按来源、日期升序), 其余留待下次
+    --target-owner / --target-repo : 归档端仓库身份(缺省 acdnx / Distribution)
     --keep-source : 只提交不删除源文件(关闭删除开关)
-    --force       : 目标已存在且内容一致时也重新提交
+    --force       : 归档端已存在且内容一致时也重新提交
     --dry-run     : 只打印将要执行的动作, 不提交也不删除
     --log         : 打印每个文件的处理详情
 
 环境要求:
     - Python 3.8+, 仅标准库;
-    - 环境变量 GIT_COMMIT_TOKEN(需本仓库 contents:write 权限), 严禁写入源码。
+    - 环境变量 GIT_COMMIT_TOKEN, **需同时具备本仓库与归档端仓库的 contents:write
+      权限**(本仓库用于删除源文件, 归档端用于写入规范名文件), 严禁写入源码。
 
 依赖: 同目录上一级(.github/Python/)的 GitHubCommitContent.py。
 """
 
 import argparse
-import filecmp
+import hashlib
 import json
 import os
 import re
@@ -106,6 +125,12 @@ ENV_TOKEN = "GIT_COMMIT_TOKEN"
 
 # 裸名归档文件: 8 位纯数字日期 + .jsonl, 如 20260325.jsonl
 BARE_NAME_RE = re.compile(r"^(\d{8})\.jsonl$")
+
+# 归档端仓库(新仓库)身份: 显式写死, 不经 .git 解析。
+# 本仓库是 ACANX/Distribution(采集暂存端), 归档端是 acdnx/Distribution —— 两个
+# 独立仓库(API id 不同), 名字只差拼写, 极易看混, 所以不给 .git 解析留机会。
+TARGET_OWNER = "acdnx"
+TARGET_REPO = "Distribution"
 
 # 内置默认配置
 DEFAULT_BRANCH = "news"
@@ -189,12 +214,36 @@ def isValidDate(date_str: str) -> bool:
     return True
 
 
-def sameContent(path_a: str, path_b: str) -> bool:
-    """比较两个文件内容是否一致(shallow=False: 逐字节比较, 不做仅元数据的快速判断)"""
+def buildCanonicalRegex(template: str) -> "re.Pattern":
+    """由命名模板构造"已规范名"的匹配式(模板里 %s 的位置换成 8 位日期捕获组)
+
+    模板形如 News_Flash_FlashFutu_DAY_FT_%s.jsonl; 用 partition 切出前后缀分别
+    re.escape, 避免把模板里的 "." 之类当正则元字符。
+    """
+    prefix, sep, suffix = template.partition("%s")
+    if not sep:
+        raise ValueError("命名模板缺少 %%s 占位符: %s" % template)
+    return re.compile("^%s(\\d{8})%s$" % (re.escape(prefix), re.escape(suffix)))
+
+
+def localBlobSha(abs_path: str) -> Optional[str]:
+    """按 git blob 语义计算本地文件的内容指纹: sha1("blob <字节数>\\0" + 内容)
+
+    与 GitHub Contents API 返回的 sha 字段同口径, 可直接比较, 从而在**不下载**
+    远端文件的前提下判断"归档端是否已是同一份内容"。
+
+    读取方式刻意与 commit_content_file 保持一致(UTF-8 文本 + 通用换行, 再编码),
+    保证算出的指纹与实际上传的字节完全相同 —— 否则 Windows 检出出的 CRLF 会让
+    两边对不上, 白白多提交一次。
+
+    :return: 40 位 sha1 十六进制串; 读取失败返回 None
+    """
     try:
-        return filecmp.cmp(path_a, path_b, shallow=False)
+        with open(abs_path, "r", encoding="utf-8") as fh:
+            data = fh.read().encode("utf-8")
     except OSError:
-        return False
+        return None
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +253,9 @@ def sameContent(path_a: str, path_b: str) -> bool:
 def deleteBranchFile(branch: str, path_key: str, token: str,
                      owner: str, repo: str,
                      api_base: str = DEFAULT_API_BASE) -> Dict[str, Any]:
-    """删除本仓库指定分支上的文件(GitHub Contents API)
+    """删除指定仓库指定分支上的文件(GitHub Contents API)
+
+    本脚本中该函数**只用于删除本仓库(采集暂存端)的源文件**, 不用于归档端。
 
     行为: GET 查 sha -> DELETE /contents/{path}(body: message + sha + branch)。
     GitHubCommitContent 未提供删除能力, 故此处按 SupabaseSyncMvsv.py 的同名实现口径
@@ -261,16 +312,20 @@ def deleteBranchFile(branch: str, path_key: str, token: str,
 # ---------------------------------------------------------------------------
 
 # 单个待处理文件
-Task = namedtuple("Task", "source date abs_src abs_dst rel_src rel_dst")
+#   canonical: 源文件名是否已是规范名(用于日志区分"改名搬运"与"原样搬运")
+Task = namedtuple("Task", "source date abs_src rel_src rel_dst canonical")
 
 
 def collectTasks(archive_dir: str, repo_root: str,
                  only_sources: Optional[List[str]],
                  only_date: Optional[str]) -> List[Task]:
-    """扫描归档目录, 收集待发布(裸名)文件
+    """扫描归档目录, 收集待搬运文件
 
-    只收严格 `<yyyyMMdd>.jsonl` 且日期合法的文件; 按来源、日期升序返回,
-    保证多次运行的处理顺序稳定可预期。
+    源文件识别(两种形态都收, 因为上游已改为直接输出规范命名):
+        - 裸名   <yyyyMMdd>.jsonl                -> 搬到归档端时改名
+        - 规范名 <模板>_<yyyyMMdd>.jsonl          -> 搬过去保持同名
+
+    只收日期合法的文件; 按来源、日期升序返回, 保证多次运行的处理顺序稳定可预期。
 
     :param archive_dir: 归档根目录(仓库相对或绝对路径)
     :param repo_root: 仓库根绝对路径
@@ -285,6 +340,7 @@ def collectTasks(archive_dir: str, repo_root: str,
     for spec in SOURCES:
         if only_sources and spec.name not in only_sources:
             continue
+        canonical_re = buildCanonicalRegex(spec.template)
         src_root = os.path.join(base, *spec.rel)
         if not os.path.isdir(src_root):
             print("警告: 来源目录不存在, 跳过: %s" % src_root, file=sys.stderr)
@@ -296,8 +352,12 @@ def collectTasks(archive_dir: str, repo_root: str,
                 continue
             for fname in sorted(os.listdir(year_dir)):
                 m = BARE_NAME_RE.match(fname)
+                canonical = False
                 if not m:
-                    continue  # 已规范命名的 / .gitkeep / 其它文件
+                    m = canonical_re.match(fname)
+                    canonical = m is not None
+                if not m:
+                    continue  # .gitkeep / 其它文件
                 date = m.group(1)
                 if only_date and date != only_date:
                     continue
@@ -311,9 +371,9 @@ def collectTasks(archive_dir: str, repo_root: str,
                     source=spec.name,
                     date=date,
                     abs_src=abs_src,
-                    abs_dst=abs_dst,
                     rel_src=toRepoPath(abs_src, repo_root),
                     rel_dst=toRepoPath(abs_dst, repo_root),
+                    canonical=canonical,
                 ))
     return tasks
 
@@ -326,7 +386,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     _ensure_console_utf8()
 
     parser = argparse.ArgumentParser(
-        description="把新闻快讯裸名 jsonl 按规范命名发布到 news 分支并清理原文件",
+        description="把新闻快讯 jsonl 按规范命名搬运到归档端仓库, 并清理本仓库原文件",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--branch", default=None,
@@ -340,10 +400,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help="只处理该日期 YYYYMMDD; 缺省全部")
     parser.add_argument("--limit", type=int, default=None,
                         help="单次最多处理 N 个文件(0=不限)")
+    parser.add_argument("--target-owner", default=None,
+                        help="归档端仓库属主(默认 acdnx, 可用 "
+                             "NEWS_FLASH_TARGET_OWNER 覆盖)")
+    parser.add_argument("--target-repo", default=None,
+                        help="归档端仓库名(默认 Distribution, 可用 "
+                             "NEWS_FLASH_TARGET_REPO 覆盖)")
     parser.add_argument("--keep-source", action="store_true",
                         help="只提交不删除源文件(关闭删除开关)")
     parser.add_argument("--force", action="store_true",
-                        help="目标已存在且内容一致时也重新提交")
+                        help="归档端已存在且内容一致时也重新提交")
     parser.add_argument("--dry-run", action="store_true",
                         help="只打印将要执行的动作, 不提交也不删除")
     parser.add_argument("--log", action="store_true",
@@ -355,6 +421,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         "archive_dir", "MAIN_ARCHIVE_DIR", DEFAULT_ARCHIVE_DIR)
     limit = args.limit if args.limit is not None else resolveSetting(
         "limit", "NEWS_FLASH_LIMIT", DEFAULT_LIMIT)
+    tgt_owner = args.target_owner or resolveSetting(
+        "target_owner", "NEWS_FLASH_TARGET_OWNER", TARGET_OWNER)
+    tgt_repo = args.target_repo or resolveSetting(
+        "target_repo", "NEWS_FLASH_TARGET_REPO", TARGET_REPO)
     # 删除开关: 命令行 --keep-source 优先, 其次环境变量, 默认开启(见模块 docstring)
     enable_delete = (not args.keep_source) and envBool("NEWS_FLASH_ENABLE_DELETE", True)
     only_date = args.date or os.environ.get("NEWS_FLASH_DATE") or None
@@ -381,37 +451,45 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("❌ %s" % e, file=sys.stderr)
         return 2
 
-    print("======== 新闻快讯 JSONL 规范命名发布 ========")
+    # 源/删除端 = 本仓库(.git 解析); 提交端 = TARGET_OWNER/TARGET_REPO(显式常量)
+    src_owner, src_repo = load_owner_repo_from_git_config()
+    if not (src_owner and src_repo):
+        print("❌ 未能从本仓库 .git/config 解析出 github.com 的 owner/repo",
+              file=sys.stderr)
+        return 2
+
+    print("======== 新闻快讯 JSONL 规范命名搬运 ========")
     print("仓库根目录 : %s" % repo_root)
     print("归档根目录 : %s" % archive_dir)
     print("目标分支   : %s" % branch)
     print("处理来源   : %s" % (", ".join(only_sources) if only_sources
                               else ", ".join(s.name for s in SOURCES)))
     print("日期过滤   : %s" % (only_date or "不限"))
+    print("源/删除端  : %s/%s(本仓库, 搬运成功后删除原文件)"
+          % (src_owner, src_repo))
+    print("提交端     : %s/%s(归档端仓库)" % (tgt_owner, tgt_repo))
+    if (src_owner.lower(), src_repo.lower()) == (tgt_owner.lower(), tgt_repo.lower()):
+        print("⚠️ 源端与提交端是同一个仓库: 本脚本将只在单个仓库内改名, "
+              "不会发生跨仓库搬运(如非本意, 请检查 --target-owner / --target-repo)")
     print("删除开关   : %s" % ("开(提交成功后删除原文件)" if enable_delete
                               else "关(只提交, 保留原文件)"))
     print("运行模式   : %s" % ("dry-run(不做任何写操作)" if args.dry_run else "实际执行"))
 
     # Token 只在非 dry-run 时需要(提交/删除都是写操作)
     if not args.dry_run and not token:
-        print("❌ 请设置环境变量 %s(需本仓库 contents:write 权限)" % ENV_TOKEN,
-              file=sys.stderr)
+        print("❌ 请设置环境变量 %s(需本仓库与归档端仓库的 contents:write 权限)"
+              % ENV_TOKEN, file=sys.stderr)
         return 2
-
-    owner, repo = load_owner_repo_from_git_config()
-    if not (owner and repo):
-        print("❌ 未能从本仓库 .git/config 解析出 github.com 的 owner/repo",
-              file=sys.stderr)
-        return 2
-    print("目标仓库   : %s/%s" % (owner, repo))
     if not args.dry_run:
         print("提示: 提交走 Contents API, 不经本地 git 提交, 不会与其它定时任务产生 push 竞争")
 
     # --- 收集 ---
     tasks = collectTasks(archive_dir, repo_root, only_sources, only_date)
-    print("\n收集完成: 待处理的裸名 jsonl 共 %d 个" % len(tasks))
+    print("\n收集完成: 待搬运的 jsonl 共 %d 个(裸名 %d, 已规范名 %d)"
+          % (len(tasks), sum(1 for t in tasks if not t.canonical),
+             sum(1 for t in tasks if t.canonical)))
     if not tasks:
-        print("没有需要发布的文件, 无事可做(仓库已全部为规范命名)")
+        print("没有需要搬运的文件, 无事可做(本仓库归档目录已清空)")
         return 0
 
     picked = tasks
@@ -429,47 +507,61 @@ def main(argv: Optional[List[str]] = None) -> int:
     for idx, t in enumerate(picked, 1):
         print("\n[%d/%d] %s" % (idx, len(picked), t.rel_src))
         if args.log:
-            print("    来源=%s 日期=%s" % (t.source, t.date))
-
-        # 1) 幂等判断: 目标已存在且内容一致 -> 远端已是这份内容
-        need_commit = True
-        if os.path.exists(t.abs_dst) and not args.force:
-            if sameContent(t.abs_src, t.abs_dst):
-                need_commit = False
-                print("    目标已存在且内容一致, 跳过提交: %s" % t.rel_dst)
-                already_ok.append(t.rel_dst)
+            print("    来源=%s 日期=%s 形态=%s"
+                  % (t.source, t.date, "已规范名" if t.canonical else "裸名"))
+            if t.rel_src != t.rel_dst:
+                print("    将改名为: %s" % t.rel_dst)
             else:
-                print("    目标已存在但内容有差异, 将更新: %s" % t.rel_dst)
-        if not os.path.exists(t.abs_dst):
-            print("    目标不存在, 将新建: %s" % t.rel_dst)
+                print("    名称不变, 仅搬运到归档端")
+
+        # 1) 幂等判断: 算本地 blob sha, 与归档端同路径文件的 sha 比较(不下载远端)
+        need_commit = True
+        if args.force:
+            print("    已指定 --force, 强制重新提交: %s" % t.rel_dst)
+        elif token:
+            local_sha = localBlobSha(t.abs_src)
+            remote_sha = _get_file_sha(DEFAULT_API_BASE, tgt_owner, tgt_repo,
+                                       t.rel_dst, branch, token, 30)
+            if local_sha and remote_sha and local_sha == remote_sha:
+                need_commit = False
+                print("    归档端已存在且内容一致(sha 相同), 跳过提交: %s" % t.rel_dst)
+                already_ok.append(t.rel_dst)
+            elif remote_sha is None:
+                print("    归档端不存在, 将新建: %s" % t.rel_dst)
+            else:
+                print("    归档端已存在但内容有差异, 将更新: %s" % t.rel_dst)
+        else:
+            print("    (dry-run 且无令牌) 未校验归档端, 假定需要提交: %s" % t.rel_dst)
 
         if args.dry_run:
             action = "提交" if need_commit else "跳过提交"
-            print("    (dry-run) %s -> 随后%s删除原文件"
+            print("    (dry-run) %s -> 随后%s删除本仓库原文件"
                   % (action, "会" if enable_delete else "不会"))
             continue
 
-        # 2) 提交(先提交, 成功才谈删除)
+        # 2) 提交到归档端(先提交, 成功才谈删除)
         if need_commit:
             result = commit_content_file(
                 t.rel_dst, t.abs_src,
-                branch=branch, owner=owner, repo=repo,
+                branch=branch, owner=tgt_owner, repo=tgt_repo,
                 commit_msg="[PublishNewsFlashJsonl] %s" % t.rel_dst,
             )
             if not result["success"]:
-                print("    ❌ 提交失败, 保留原文件: %s" % result["message"])
+                print("    ❌ 提交到 %s/%s 失败, 保留原文件: %s"
+                      % (tgt_owner, tgt_repo, result["message"]))
                 kept.append("%s: %s" % (t.rel_src, result["message"]))
                 continue
-            print("    ✅ 提交成功(HTTP %s): %s" % (result["http_status"], t.rel_dst))
+            print("    ✅ 已提交到 %s/%s(HTTP %s): %s"
+                  % (tgt_owner, tgt_repo, result["http_status"], t.rel_dst))
             published.append(t.rel_dst)
 
-        # 3) 删除原文件(提交成功是硬前提; 上面已 continue 掉失败分支)
+        # 3) 删除本仓库的源文件(提交成功是硬前提; 上面已 continue 掉失败分支)
         if not enable_delete:
-            print("    🕐 已发布, 待删除(删除开关未开启): %s" % t.rel_src)
+            print("    🕐 已送达, 待删除(删除开关未开启): %s" % t.rel_src)
             kept.append("%s: 待删除(开关关闭)" % t.rel_src)
             continue
 
-        result = deleteBranchFile(branch, t.rel_src, token, owner, repo)
+        result = deleteBranchFile(branch, t.rel_src, token, src_owner, src_repo)
         if not result["success"]:
             delete_failed.append("%s: %s" % (t.rel_src, result["message"]))
             continue
@@ -482,18 +574,20 @@ def main(argv: Optional[List[str]] = None) -> int:
         deleted.append(t.rel_src)
 
     # --- 汇总 ---
-    print("\n======== 发布结束 ========")
+    print("\n======== 搬运结束 ========")
     if args.dry_run:
         print("dry-run 结束, 未做任何写操作")
         return 0
     print("本次处理      : %d 个" % len(picked))
-    print("已提交(新建/更新): %d 个" % len(published))
+    print("已提交(新建/更新): %d 个 -> %s/%s@%s"
+          % (len(published), tgt_owner, tgt_repo, branch))
     print("内容一致跳过提交: %d 个" % len(already_ok))
-    print("已删除原文件  : %d 个" % len(deleted))
+    print("已删除原文件  : %d 个(本仓库 %s/%s@%s)"
+          % (len(deleted), src_owner, src_repo, branch))
     print("删除失败      : %d 个" % len(delete_failed))
     print("保留未删(含失败): %d 个" % len(kept))
     if delete_failed:
-        print("删除失败清单(数据已发布, 重跑即可补齐删除):")
+        print("删除失败清单(数据已送达, 重跑即可补齐删除):")
         for item in delete_failed:
             print("    - %s" % item)
     if kept:
