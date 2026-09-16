@@ -1,0 +1,107 @@
+# apm.DailyMergeJsonl —— APM 埋点 Data 侧批次按日聚合为 JSONL(前置工序, Contents API)
+# =============================================================================
+#
+# 每日在 apm.DailyJsonlArchive(北京时间 04:10)之前运行, 把
+# Data/Meta/WebMMCP/APM/{API,Page}/ 下 **昨日与今日**(北京时间)的埋点批次
+# 按记录 ts 分组聚合为
+#
+#   Archive/Meta/WebMMCP/APM/{type}/APM_{type}_{Code}_DAY_ACANX_{yyyyMMdd}.jsonl
+#
+# 经 GitHub Contents API 提交到 apm 分支(文件修改/新增一律走 Contents API,
+# 不用 git push, 因此 permissions 只需 contents: read):
+#   - 令牌经 secrets.GIT_COMMIT_TOKEN 注入(与 quote-gold 线同一密钥);
+#   - 每(类型, 日期)至多一个提交, 无新增记录的分组跳过提交;
+#   - 409(sha 过期)与网络抖动自动重试。
+#
+# 与主转换的衔接: 本工作流完成后经 workflow_run 触发 apm.DailyJsonlArchive
+# —— 前置工序已把当日数据提前经 Contents API 写入远端, 主转换在 checkout
+# 副本上算出的"新增行"自然为 0, 只做幂等核对后跳过提交。兜底: 本工作流失败
+# 时 workflow_run 仍会触发(completed 含失败结论), 主转换照常转换并经 git
+# push 提交, 数据不丢; 主转换自身的 schedule cron 保留, 作为双保险。
+#
+# 定时运行传 --date 昨日+今日 是为覆盖"跨日边界": 03:40 运行时昨日数据已齐,
+# 今日数据尚不完整, 次日会再次处理今日形成完整覆盖; 分组/合并幂等, 重复处理
+# 不会产生重复行。
+#
+# 跑 merge_apm_api.py / merge_apm_page.py 两个入口: 它们是
+# APMJsonlConvert.DailyJsonl.py 的薄封装(--type API|Page --data-only),
+# 只扫 Data 侧采集批次, 不把 Archive 的 merge 历史输出当源。
+#
+# 注意: 本工作流 YAML 放在默认分支 dev(schedule 只在默认分支生效), 脚本与
+# 数据都在 apm 分支, checkout 的 ref 指向 apm; 命名沿用 <分支>.<用途>.yml 规范。
+
+name: apm.DailyMergeJsonl
+
+on:
+  schedule:
+    # 北京时间 03:40 (UTC 19:40), 早于 apm.DailyJsonlArchive 的 04:10;
+    # 错峰于其它每日任务(03:45 / 05:20), 完成后经 workflow_run 链触发主转换
+    - cron: "40 19 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "只统计将要提交的行数, 不实际提交"
+        type: boolean
+        default: false
+      date:
+        description: "只处理记录时间(北京时间)为该日(YYYYMMDD, 逗号分隔多日)的记录, 留空=今日"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ApmDailyMergeJsonl
+  cancel-in-progress: false
+
+jobs:
+  merge-and-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出仓库(apm 分支)
+        uses: actions/checkout@v5
+        with:
+          ref: apm
+          fetch-depth: 1
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: 运行按日聚合脚本(API + Page, Contents API 提交)
+        shell: bash
+        env:
+          GIT_COMMIT_TOKEN: ${{ secrets.GIT_COMMIT_TOKEN }}
+          # 与脚本内置默认一致, 显式写出防止漂移(改动须与脚本同步)
+          APM_ARCHIVE_OWNER: ACANX
+          APM_ARCHIVE_REPO: Distribution
+          APM_ARCHIVE_BRANCH: apm
+        run: |
+          ARGS=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ inputs.dry_run }}" = "true" ]; then
+              ARGS="$ARGS --dry-run"
+            fi
+            if [ -n "${{ inputs.date }}" ]; then
+              for d in $(echo "${{ inputs.date }}" | tr ',' ' '); do
+                ARGS="$ARGS --date $d"
+              done
+            fi
+          else
+            # 定时运行: 处理"昨日+今日"(北京时间), 保证跨日边界的完整覆盖
+            ARGS="$ARGS --date $(TZ=Asia/Shanghai date -d yesterday +%Y%m%d) --date $(TZ=Asia/Shanghai date +%Y%m%d)"
+          fi
+          # 两个入口相互独立, 任一失败不阻断另一个, 最后统一以退出码报告
+          set +e
+          python3 .github/Python/APM/merge_apm_api.py $ARGS
+          API_RC=$?
+          python3 .github/Python/APM/merge_apm_page.py $ARGS
+          PAGE_RC=$?
+          set -e
+          echo "merge_apm_api.py  退出码: $API_RC"
+          echo "merge_apm_page.py 退出码: $PAGE_RC"
+          [ "$API_RC" -eq 0 ] && [ "$PAGE_RC" -eq 0 ]

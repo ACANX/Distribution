@@ -16,6 +16,13 @@
 # 注意: 本工作流 YAML 放在默认分支 dev(schedule 只在默认分支生效),
 # 脚本与数据都在 apm 分支, checkout 的 ref 指向 apm; 命名沿用
 # <分支>.<用途>.yml 规范。
+#
+# 触发来源(三路, 幂等互相兜底):
+#   1. workflow_run: 前置工序 apm.DailyMergeJsonl 完成后立即触发 —— 这是
+#      保证"前置先执行完成"的主路径; 前置失败 conclusion=failure 时照常
+#      触发, 主转换兜底把当日数据完整转换推送, 数据不丢;
+#   2. schedule: 北京 04:10 的定时跑(双保险, 前置已处理过则 0 新增跳过);
+#   3. workflow_dispatch: 手动带参运行。
 
 name: apm.DailyJsonlArchive
 
@@ -38,6 +45,9 @@ on:
         description: "只处理记录时间(北京时间)为该日(YYYYMMDD)的记录, 留空=不限"
         type: string
         default: ""
+  workflow_run:
+    workflows: [apm.DailyMergeJsonl]
+    types: [completed]
 
 permissions:
   contents: write
@@ -83,6 +93,10 @@ jobs:
             if [ -n "${{ inputs.date }}" ]; then
               ARGS="$ARGS --date ${{ inputs.date }}"
             fi
+          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
+            # 前置工序 apm.DailyMergeJsonl 已按(类型, 日期)经 Contents API
+            # 提交过, 这里照常全量幂等核对(0 新增则跳过提交)
+            echo "触发来源: 前置工序 ${{ github.event.workflow.name }} (${{ github.event.workflow_run.conclusion }})"
           fi
           python3 .github/Python/APM/APMJsonlConvert.py $ARGS
 
