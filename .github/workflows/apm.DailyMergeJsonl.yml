@@ -23,7 +23,7 @@
 # 今日数据尚不完整, 次日会再次处理今日形成完整覆盖; 分组/合并幂等, 重复处理
 # 不会产生重复行。
 #
-# 跑 merge_apm_api.py / merge_apm_page.py 两个入口: 它们是
+# 跑 MergeApmApi.py / MergeApmPage.py 两个入口: 它们是
 # APMJsonlConvert.DailyJsonl.py 的薄封装(--type API|Page --data-only),
 # 只扫 Data 侧采集批次, 不把 Archive 的 merge 历史输出当源。
 #
@@ -97,11 +97,11 @@ jobs:
           fi
           # 两个入口相互独立, 任一失败不阻断另一个, 最后统一以退出码报告
           set +e
-          python3 .github/Python/APM/merge_apm_api.py $ARGS
+          python3 .github/Python/APM/MergeApmApi.py $ARGS
           API_RC=$?
-          python3 .github/Python/APM/merge_apm_page.py $ARGS
+          python3 .github/Python/APM/MergeApmPage.py $ARGS
           PAGE_RC=$?
           set -e
-          echo "merge_apm_api.py  退出码: $API_RC"
-          echo "merge_apm_page.py 退出码: $PAGE_RC"
+          echo "MergeApmApi.py  退出码: $API_RC"
+          echo "MergeApmPage.py 退出码: $PAGE_RC"
           [ "$API_RC" -eq 0 ] && [ "$PAGE_RC" -eq 0 ]
