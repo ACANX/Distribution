@@ -9,9 +9,11 @@
 #   Archive/Meta/WebMMCP/APM/{type}/APM_{type}_{Code}_DAY_ACANX_{yyyyMMdd}.jsonl
 #   (type = API / Page, Code = MetaCms{type})
 #
-# 转换脚本 .github/Python/APM/APMJsonlConvert.py 只读源文件(不删不改任何源
-# JSON), 目标 JSONL 已存在时整行去重增量合并, 因此可放心定期重跑。
-# 转换结果提交并推回 apm 分支。
+# 转换脚本 .github/Python/APM/APMJsonlConvert.py 目标 JSONL 已存在时整行去重
+# 增量合并, 因此可放心定期重跑; 转换结果提交并推回 apm 分支。
+# Data 侧源文件在**其全部记录都确认收录进目标 JSONL 之后**由脚本删除(逐记录
+# 核对, 含未归档/无法归档记录的文件不删), 删除与转换产物随同一次提交推送;
+# Archive 侧的 merge 历史输出与 JSONL 产物不在删除范围。
 #
 # 注意: 本工作流 YAML 放在默认分支 dev(schedule 只在默认分支生效),
 # 脚本与数据都在 apm 分支, checkout 的 ref 指向 apm; 命名沿用
@@ -35,6 +37,10 @@ on:
     inputs:
       dry_run:
         description: "只统计将要写入的行数, 不写文件不提交"
+        type: boolean
+        default: false
+      keep_source:
+        description: "保留 Data 侧源文件(默认删除已确认收录进目标 JSONL 的源文件)"
         type: boolean
         default: false
       apm_type:
@@ -85,6 +91,9 @@ jobs:
             if [ "${{ inputs.dry_run }}" = "true" ]; then
               ARGS="$ARGS --dry-run"
             fi
+            if [ "${{ inputs.keep_source }}" = "true" ]; then
+              ARGS="$ARGS --keep-source"
+            fi
             if [ -n "${{ inputs.apm_type }}" ]; then
               for t in $(echo "${{ inputs.apm_type }}" | tr ',' ' '); do
                 ARGS="$ARGS --type $t"
@@ -105,12 +114,15 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # 转换产物目录(新增的 JSONL; 脚本只读源文件, 源目录不会有变更)
+          # 转换产物目录(新增的 JSONL)
           git add -A "Archive/Meta/WebMMCP/APM"
+          # 源目录(-A 以覆盖转换后删除的源 JSON: 脚本逐记录核对收录后才删除,
+          # 删除发生在 Data/ 下, 必须一并 git add, 否则删除从未进入提交)
+          git add -A "Data/Meta/WebMMCP/APM"
           if git diff --cached --quiet; then
             echo "没有新增数据, 跳过提交"
           else
-            git commit -m "chore(data): APM埋点JSON按日转JSONL $(date +%Y-%m-%d)"
+            git commit -m "chore(data): APM埋点JSON按日转JSONL并清理已收录源文件 $(date +%Y-%m-%d)"
             # 固定推送到 apm 分支
             git push origin apm
           fi
