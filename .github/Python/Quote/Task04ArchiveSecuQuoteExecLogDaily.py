@@ -3,7 +3,7 @@
 
 - 读取 Data/Finv/SecuQuoteExecLog 下生成的 json 文件（每个文件一个 JSON 对象）
 - 将全部数据汇总、去重（唯一键: ts + selected_code）并按时间顺序排列
-- 合并导出为一个 jsonl：Archive/Finv/SecuQuoteExecLog/{yyyyMMdd}.jsonl（每行一条记录）
+- 合并导出为一个 jsonl：Archive/Finv/SecuQuoteExecLog/LOG_Finv_SecuQuoteExecLog_DAY_Lambda_{yyyyMMdd}.jsonl（每行一条记录）
 - 文件名日期严格按北京时间处理（运行当天 BJT 日期）
 - 目标文件已存在时，增量合并去重后写回（已有数据 + 新数据，整体有序）
 - 归档确认成功后，删除已入档的源文件（git rm 留痕，日志打印每个文件路径）
@@ -19,6 +19,10 @@ from common import gitutil
 from common.timeutil import BJT
 
 TASK_NAME = 'Task04ArchiveSecuQuoteExecLogDaily'
+
+# 归档文件名前缀: Archive/Finv/SecuQuoteExecLog/{ARCHIVE_PREFIX}{yyyyMMdd}.jsonl
+# 跨仓库转存脚本 .github/Python/Quote/ArchiveJsonlTransfer.py 按同一命名接收
+ARCHIVE_PREFIX = 'LOG_Finv_SecuQuoteExecLog_DAY_Lambda_'
 
 
 def _dedup_key(record):
@@ -94,7 +98,7 @@ def _archive(config, log):
         log.warning(f'跳过无法解析的文件: {skipped}（不删除）')
 
     # ── 2. 与已有归档合并去重（键: ts+selected_code）→ 按时间排序 → 写回单个文件 ──
-    ap = dst / f'{datetime.now(BJT):%Y%m%d}.jsonl'
+    ap = dst / f'{ARCHIVE_PREFIX}{datetime.now(BJT):%Y%m%d}.jsonl'
     merged = {}
     for rec in load_existing(ap):
         merged[_dedup_key(rec)] = rec
