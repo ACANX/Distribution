@@ -1,4 +1,4 @@
-name: AutoSquashMergeLatestBrenchCommitsExcludingAuthor
+name: latest.AutoSquashMergeLatestBrenchCommitsExcludingAuthor
 
 on:
   workflow_dispatch:
