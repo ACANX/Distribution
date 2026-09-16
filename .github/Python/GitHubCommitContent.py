@@ -14,6 +14,7 @@ GitHubCommitContent —— 单文件 GitHub Contents API 提交库（纯标准�
     - 本文件是纯函数库，没有命令行入口；通过“同目录下的其他 Python 脚本” import 调用；
     - import 时不发起任何网络请求、无全局副作用，可放心在脚本头部导入；
     - 公开函数：commit_content（提交文本）、commit_content_file（提交本地文件）、
+      delete_file（删除文件）、read_file_text（读取文本）、
       load_owner_repo_from_git_config（解析仓库身份）；
     - 结果一律以 dict 返回，调用方判断 success 即可分流；失败不抛异常；
     - 调用过程中的诊断信息走 stderr，不会污染调用方 print 的结果流；
@@ -102,6 +103,17 @@ $env:GIT_COMMIT_TOKEN = "ghp_你的Token"；严禁把令牌写进任何源码）
     else:                                      # 200 → 更新成功
         print("已更新 status/last_run.json")
 
+【示例 7：删除远端文件（幂等：文件本就不存在也按成功返回）】
+
+    from GitHubCommitContent import delete_file
+
+    result = delete_file("data/done/20260430.json", commit_msg="清理已归档源文件")
+    if result["success"]:
+        # http_status：200 = 本次真删除；404 = 文件本就不存在（重复删除不报错）
+        print("删除成功, http_status =", result["http_status"])
+    else:
+        print("删除失败:", result["message"])   # 409(并发改写)重试即可，其余按 message 排查
+
 【环境要求】
     - Python 3.8+，仅标准库，不依赖 requests 等任何第三方包；
     - 可直连 api.github.com（443）。
@@ -174,6 +186,20 @@ $env:GIT_COMMIT_TOKEN = "ghp_你的Token"；严禁把令牌写进任何源码）
        - success=False 时 message 为失败原因（令牌缺失 / .git 解析失败 / 网络错误 /
          GitHub 返回的错误 message 原文等；均带 HTTP 状态码前缀，404 时会探测仓库/分支
          存在性并给出排查提示），http_status 为 GitHub 状态码或 None。
+    D. 删除（DELETE /repos/{owner}/{repo}/contents/{path}，body JSON）：
+       {
+         "message": commit_msg,
+         "sha":  <查到的当前 sha，删除必须携带>,
+         "branch":  branch,
+         "author":    { "name": "github-bot", "email": "github-bot@users.noreply.github.com" },
+         "committer": { "name": "github-bot", "email": "github-bot@users.noreply.github.com" }
+       }
+       - 先 GET 查 sha；文件已不存在（404）→ 不发 DELETE，直接按幂等成功返回
+         （http_status=404）—— 重复删除同一文件不报错；
+       - 删除成功返回 HTTP 200；409（sha 过期，文件被并发改写）由调用方重试，
+         重试时会重新查最新 sha；
+       - 返回结构与 commit_content 一致，凭 http_status 区分“真删除(200)”与
+         “本就不存在(404)”。
 
 五、安全红线（AGENT 必须遵守）
 ----------------------------------------------------------------------------------------
@@ -192,7 +218,7 @@ $env:GIT_COMMIT_TOKEN = "ghp_你的Token"；严禁把令牌写进任何源码）
       "Not Found"（为不暴露仓库存在性，与“文件不存在”无法在响应上区分）；此时失败
       message 会探测仓库/分支存在性并列出可操作的排查项；
     - 提交相同 sha 的文件会以 commit_msg 生成新 commit；提交未变更内容也会生成空 commit
-      （GitHub 不拒绝）；删除文件不属本工具范围；
+      （GitHub 不拒绝）；删除文件用 delete_file（DELETE contents，幂等，见四-D）；
     - 大量循环提交时注意 GitHub API 限流（默认 5000 次/小时），建议批量场景自行控制频率；
     - Windows 控制台可能为 GBK 编码：调用脚本 print 中文结果时如乱码，请设置环境变量
       PYTHONIOENCODING=utf-8。
@@ -777,6 +803,121 @@ def commit_content_file(path_key, local_file, branch=None, commit_msg=None,
                           api_base=api_base, timeout=timeout)
 
 
+def delete_file(path_key, branch=None, commit_msg=None, owner=None, repo=None,
+                token=None, api_base=DEFAULT_API_BASE, timeout=30):
+    """删除 GitHub 仓库指定分支上的文件（Contents API DELETE，无第三方依赖）
+
+    行为要点：先 GET 查 sha（文件已不存在 404 → 直接按幂等成功返回，不发 DELETE），
+    DELETE 时携带 sha；默认分支按 Commit.json 的 BranchMigration（缺省 "Migration"）、
+    默认提交信息 "DeletedAt@<当前本地时间>"、author/committer 固定为通用 bot 身份
+    github-bot；失败不抛异常，一律以返回 dict 表示。
+
+    :param path_key: 仓库内文件路径（可含目录，如 "data/x.json"）；传原始未编码形式
+    :param branch: 目标分支；None 时按 Commit.json BranchMigration → 默认 "Migration" 解析
+    :param commit_msg: 提交说明；None 时默认 "DeletedAt@<当前本地时间ISO>"
+    :param owner: 仓库属主；None 时按 Commit.json Owner → 本仓库 .git/config 解析
+    :param repo: 仓库名；None 时按 Commit.json Repo → 本仓库 .git/config 解析
+    :param token: 访问令牌；None 时读取环境变量 GIT_COMMIT_TOKEN（二者都缺则失败）
+    :param api_base: GitHub API 仓库根，默认 https://api.github.com/repos
+    :param timeout: 单次 HTTP 请求超时秒数，默认 30
+    :return: 固定结构 dict：
+             { "success": bool, "message": str|None, "path": str, "http_status": int|None }
+             - success=True 时 message 为 None；删除成功 http_status=200，
+               文件本就不存在（重复删除）http_status=404 —— 两者均为幂等成功；
+             - 函数内部不抛网络/HTTP 异常，一切失败以 dict 形式返回。
+    """
+    def fail(msg):
+        """构造失败结果并输出诊断信息到 stderr
+
+        :param msg: 失败原因
+        :return: 失败结果 dict
+        """
+        _warn(msg)
+        return {"success": False, "message": msg, "path": path_key, "http_status": None}
+
+    # 1) Token：参数优先，其次环境变量 GIT_COMMIT_TOKEN
+    tok = (token or "").strip()
+    if not tok:
+        tok = os.environ.get(ENV_TOKEN, "").strip()
+    if not tok:
+        return fail("❌ 请设置环境变量 %s 或者在参数 token 中传入令牌" % ENV_TOKEN)
+
+    # 2) 统一解析目标仓库身份与分支：参数 → Commit.json → .git 解析/内置默认
+    owner, repo, target_branch = _resolve_target(owner, repo, branch)
+    if not (owner and repo):
+        return fail("❌ 未能从 Commit.json 或本仓库 .git/config 解析出 github.com 的 "
+                    "owner/repo，请显式传入 owner/repo 参数")
+    _warn("删除目标解析: 仓库 = %s/%s | 分支 = %s | 路径 = %s"
+          % (owner, repo, target_branch, path_key))
+    target_msg = commit_msg or ("DeletedAt@" + datetime.datetime.now().isoformat())
+
+    # 3) 组装 contents URL（path_key 仅保留 "/"，其余字符 URL 编码）
+    api_base = (api_base or DEFAULT_API_BASE).rstrip("/")
+    contents_url = "%s/%s/%s/contents/%s" % (
+        api_base, owner, repo, urllib.parse.quote(path_key, safe="/"))
+
+    # 4) 查 sha：DELETE 必须携带当前 sha；文件已不存在 → 幂等成功（重复删除不报错）
+    status, text, err = _request(
+        "GET", "%s?ref=%s" % (contents_url, urllib.parse.quote(target_branch, safe="")),
+        _auth_headers(tok), None, timeout)
+    if err:
+        return fail("删除失败（查询文件 sha 网络错误）: %s" % err)
+    if status == 404:
+        _warn("远端文件不存在，无需删除（按幂等成功处理）: %s" % path_key)
+        return {"success": True, "message": None, "path": path_key, "http_status": 404}
+    if status != 200:
+        snippet = (text or "").strip().replace("\n", " ")[:300]
+        return fail("删除失败（查询文件 sha）: HTTP %s: %s"
+                    % (status, snippet or "空响应体"))
+    parsed = _parse_json(text)
+    sha = parsed.get("sha") if isinstance(parsed, dict) else None
+    if not sha:
+        return fail("删除失败：查询文件 sha 响应异常（缺少顶层 sha 字段，可能指向目录）: %s"
+                    % path_key)
+
+    # 5) DELETE 提交：body 携带 sha 与分支，GitHub 据此生成删除提交
+    body_json = {
+        "message": target_msg,
+        "sha": sha,
+        "branch": target_branch,
+        "author": {"name": BOT_NAME, "email": BOT_EMAIL},
+        "committer": {"name": BOT_NAME, "email": BOT_EMAIL},
+    }
+    status, text, err = _request(
+        "DELETE", contents_url, _auth_headers(tok, with_body=True),
+        json.dumps(body_json, ensure_ascii=False).encode("utf-8"), timeout)
+    if err:
+        return fail("删除失败: %s" % err)
+
+    parsed = _parse_json(text)
+    # 6) 成功判定：与 commit_content 同口径（HTTP 2xx 且响应无 "status"/"message"）
+    if status is not None and 200 <= status < 300:
+        if parsed is None or not isinstance(parsed, dict) \
+                or (not parsed.get("status") and not parsed.get("message")):
+            return {"success": True, "message": None,
+                    "path": path_key, "http_status": status}
+        reason = "HTTP %s: %s" % (status,
+                                  parsed.get("message") or "GitHub 返回异常应答")
+    elif status == 409:
+        # 并发改写导致 sha 过期：调用方重试即可（重试会重新查最新 sha）
+        reason = ("HTTP 409 Conflict: 文件在查 sha 后被并发改写(sha 过期)，重试即可；"
+                  "路径 = %s，分支 = %s" % (path_key, target_branch))
+    elif status == 404:
+        # 查 sha 成功但 DELETE 返回 404：多为文件在两步之间被并发删除；
+        # 重试会走第 4 步的幂等分支，也可能是仓库/分支/权限问题，故附探测说明
+        probe = _probe_repo_branch(api_base, owner, repo, target_branch, tok, timeout)
+        reason = ("HTTP 404 Not Found | %s | 请求对象 = %s/%s，分支 = %s，路径 = %s。"
+                  "若为文件刚被并发删除，重试即按幂等成功处理"
+                  % (probe, owner, repo, target_branch, path_key))
+    else:
+        if isinstance(parsed, dict) and parsed.get("message"):
+            reason = "HTTP %s: %s" % (status, parsed.get("message"))
+        else:
+            snippet = (text or "").strip().replace("\n", " ")[:300]
+            reason = "HTTP %s: %s" % (status, snippet if snippet else "空响应体")
+    return {"success": False, "message": reason, "path": path_key, "http_status": status}
+
+
 def read_file_text(path_key, branch=None, owner=None, repo=None,
                    token=None, api_base=DEFAULT_API_BASE, timeout=30):
     """从目标仓库的指定分支读取文件并返回 UTF-8 文本（Contents API GET）
@@ -848,7 +989,7 @@ if __name__ == "__main__":
     _ensure_console_utf8()
     print("GitHubCommitContent 是纯函数库，没有命令行入口，直接执行无任何动作。")
     print("请在【同目录】的其他 Python 脚本中 import 使用：")
-    print("    from GitHubCommitContent import commit_content, commit_content_file")
+    print("    from GitHubCommitContent import commit_content, commit_content_file, delete_file")
     print("仓库身份解析：from GitHubCommitContent import load_owner_repo_from_git_config")
     print("Commit.json 登记值：from GitHubCommitContent import load_commit_config")
     print("冒烟/调用示例脚本：python3 GitHubCommitContentDemo.py")

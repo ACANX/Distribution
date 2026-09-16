@@ -41,8 +41,25 @@ APM JSON -> JSONL 归档转换程序
     行格式: json.dumps(rec, ensure_ascii=False, separators=(",", ":")),
     紧凑格式, 保留中文; 字段顺序与源 JSON 保持一致。
 
-设计为只读源文件: 不删除、不改写任何源 JSON(采集批次与 merge 输出都保留),
-转换产物只增不改, 由 git 提交到 apm 分支。
+源文件清理(归档后删除采集批次)
+------------------------------
+    Data 侧(Data/Meta/WebMMCP/APM)的采集批次文件在**其全部记录都已收录进目标
+    JSONL 之后**由本脚本直接删除(本地 unlink, 随工作流的 git add -A 一并提交);
+    Archive 侧的 merge 历史输出不在删除范围。判定与前置工序
+    APMJsonlConvert.DailyJsonl.py 同口径(逐记录核对, 从严保护):
+        - 文件里每条可归档记录 (日期, 行文本) 都必须在对应的
+          Archive/.../{type}/APM_{type}_{Code}_DAY_ACANX_{yyyyMMdd}.jsonl 中命中;
+          目标文件不存在或行未命中 → 整文件保留;
+        - 含无法归档记录(JSON 解析失败 / 非对象 / ts 缺失或非法)的文件永不删除,
+          删除会永久丢失未归档数据;
+        - 空数组文件(无记录)按可删处理(无数据可丢); .gitkeep 不在 *.json 扫描范围。
+    --keep-source 可整体关闭删除; --dry-run 只报告不删除。删除失败的源文件按
+    [ERROR] 报告并以退出码 1 结束(记录已在 JSONL, 文件留待下次运行重删)。
+
+    源 JSON 一经删除不可恢复, 故判定坚持"全量收录确认"而非"部分命中",
+    宁可保留待下次收敛。
+
+转换产物只增不改(目标 JSONL 的已有行原样保留), 由 git 提交到 apm 分支。
 
 配置来源(优先级从高到低)
 ------------------------
@@ -56,6 +73,7 @@ APM JSON -> JSONL 归档转换程序
     python3 .github/Python/APM/APMJsonlConvert.py --dry-run      # 只统计不写
     python3 .github/Python/APM/APMJsonlConvert.py --type API     # 只转换 API
     python3 .github/Python/APM/APMJsonlConvert.py --date 20260505 # 只转该日
+    python3 .github/Python/APM/APMJsonlConvert.py --keep-source  # 保留源文件
     python3 .github/Python/APM/APMJsonlConvert.py --log          # 逐文件详情
 
 依赖: 仅 Python 3 标准库。
@@ -115,41 +133,111 @@ def ts_to_date(ts) -> str:
 
 
 def collect_tasks(data_root: Path, archive_root: Path, only_types, only_date, log):
-    """扫描两处源根目录, 返回 {(type, date): [记录, ...]}(保持源文件与记录顺序)。
+    """扫描两处源根目录, 返回 (grouped, tracked)。
 
     type = 源文件位于源根目录下的一级子目录名; 一级子目录下的 json 文件
     (含更深层的周子目录)全部纳入。only_types / only_date 为过滤条件(None=不限)。
+
+    :return: (grouped, tracked)
+        grouped: {(type, date): [记录, ...]}(保持源文件与记录顺序);
+        tracked: {文件路径: {"type": str, "records": [(date, 行文本), ...],
+                             "undecodable": bool}}
+                 —— 仅 Data 侧(data_root 下)文件, 供"收录确认后删除源文件"判定;
+                 undecodable=True 表示文件里有无法归档的记录(解析失败/非对象/
+                 ts 缺失或非法), 这类文件绝不删除(删除会永久丢失未归档数据)。
     """
     grouped = defaultdict(list)
+    tracked = {}
     for src_root in (data_root, archive_root):
         if not src_root.is_dir():
             log("源目录不存在, 跳过: %s" % src_root)
             continue
+        is_data_side = (src_root == data_root)   # 仅 Data 侧参与删除判定
         for type_dir in sorted(p for p in src_root.iterdir() if p.is_dir()):
             if only_types and type_dir.name not in only_types:
                 continue
             files = sorted(type_dir.rglob("*.json"))
             for f in files:
+                info = {"type": type_dir.name, "records": [], "undecodable": False}
                 try:
                     with open(f, "r", encoding=OUT_ENCODING) as fh:
                         data = json.load(fh)
                 except (OSError, ValueError) as exc:
                     log("[WARN] JSON 解析失败, 跳过 %s: %s" % (f, exc))
+                    info["undecodable"] = True
+                    if is_data_side:
+                        tracked[f] = info
                     continue
                 if not isinstance(data, list):
                     data = [data]           # 兼容意外写入的单对象
                 for rec in data:
                     if not isinstance(rec, dict):
                         log("[WARN] 非对象记录, 跳过: %s" % f)
+                        info["undecodable"] = True
                         continue
                     date = ts_to_date(rec.get("ts"))
                     if date is None:
                         log("[WARN] 记录 ts 缺失或非法, 跳过: %s" % f)
+                        info["undecodable"] = True
                         continue
+                    info["records"].append((date, line_of(rec)))
                     if only_date and date != only_date:
                         continue
                     grouped[(type_dir.name, date)].append(rec)
-    return grouped
+                if is_data_side:
+                    tracked[f] = info
+    return grouped, tracked
+
+
+def target_lines_reader(archive_root: Path, cache):
+    """返回 target_lines(type, date) 查询函数: 目标 JSONL 当前全部行集合(带缓存)。
+
+    首次访问某 (type, date) 时从磁盘读取(文件不存在 → 空集); 之后由调用方在
+    转换循环里把本次新增行 update 进缓存, 与文件实际内容保持一致 —— 干跑时
+    则为"模拟写入后的行集", 让 --dry-run 也能报告"将删除"。
+    """
+    def target_lines(type_name, date):
+        key = (type_name, date)
+        if key not in cache:
+            target = archive_root / type_name / NAME_TMPL.format(
+                type=type_name, code=CODE_PREFIX + type_name, date=date)
+            lines = set()
+            if target.exists():
+                with open(target, "r", encoding=OUT_ENCODING) as fh:
+                    lines = {ln for ln in (l.rstrip("\n") for l in fh) if ln}
+            cache[key] = lines
+        return cache[key]
+    return target_lines
+
+
+def plan_deletions(tracked, target_lines):
+    """判定哪些 Data 侧源文件的全部记录都已收录进目标 JSONL。
+
+    从严保护(任一不满足即整文件保留):
+        - 含无法归档记录(undecodable)的文件直接保留(删除会永久丢失未归档数据);
+        - 文件里每条可归档记录 (date, 行文本) 都必须在对应 (类型, 日期) 的
+          目标 JSONL 全量行集合中命中 —— 逐条核对, 跨日文件也覆盖全部记录。
+    空数组文件(records 为空)按可删处理: 无任何数据可丢。
+
+    :param tracked: collect_tasks 的文件级追踪表
+    :param target_lines: callable(type, date) -> 目标 JSONL 当前全部行文本集合
+    :return: (deletable 路径列表, protected [(路径, 保留原因), ...])
+    """
+    deletable, protected = [], []
+    for f, info in sorted(tracked.items()):
+        if info["undecodable"]:
+            protected.append((f, "含无法归档的记录"))
+            continue
+        missing = None
+        for (date, line) in info["records"]:
+            if line not in target_lines(info["type"], date):
+                missing = "记录日期 %s 的行未在目标 JSONL 中命中" % date
+                break
+        if missing is None:
+            deletable.append(f)
+        else:
+            protected.append((f, missing))
+    return deletable, protected
 
 
 def merge_into_jsonl(target: Path, recs):
@@ -184,6 +272,9 @@ def main() -> None:
                         help="转换产物根目录(默认 Archive/Meta/WebMMCP/APM)")
     parser.add_argument("--dry-run", action="store_true",
                         help="只统计将要写入的行数, 不写任何文件")
+    parser.add_argument("--keep-source", action="store_true",
+                        help="保留 Data 侧源文件, 不做归档后删除"
+                             "(默认删除全部记录已收录进目标 JSONL 的源文件)")
     parser.add_argument("--log", action="store_true",
                         help="输出每个源文件的处理详情")
     args = parser.parse_args()
@@ -204,8 +295,8 @@ def main() -> None:
     if not archive_root.is_absolute():
         archive_root = root / archive_root
 
-    grouped = collect_tasks(data_root, archive_root,
-                            args.types, args.date, log)
+    grouped, tracked = collect_tasks(data_root, archive_root,
+                                     args.types, args.date, log)
 
     types = sorted({t for (t, _d) in grouped})
     print("=" * 72)
@@ -222,27 +313,64 @@ def main() -> None:
         return
 
     total_recs = total_new = 0
+    line_cache = {}                   # (type, date) -> 目标 JSONL 当前全部行集合
+    target_lines = target_lines_reader(archive_root, line_cache)
     for (type_name, date) in sorted(grouped):
         recs = grouped[(type_name, date)]
         target = archive_root / type_name / NAME_TMPL.format(
             type=type_name, code=CODE_PREFIX + type_name, date=date)
+        lines = target_lines(type_name, date)      # 先读现有(缓存/文件), 再写
         if args.dry_run:
             print("  [DRY-RUN] %s <- %d 条记录" % (target.relative_to(root).as_posix(), len(recs)))
             total_recs += len(recs)
+            lines.update(line_of(r) for r in recs)   # 模拟写入后的行集
             continue
-        lines, new = merge_into_jsonl(target, recs)
+        lines_count, new = merge_into_jsonl(target, recs)
         total_recs += len(recs)
         total_new += new
+        lines.update(line_of(r) for r in recs)       # 与实际落盘内容一致
         rel = target.relative_to(root).as_posix()
         if new:
-            print("  %s: 新增 %d 行(现共 %d 行)" % (rel, new, lines))
+            print("  %s: 新增 %d 行(现共 %d 行)" % (rel, new, lines_count))
         else:
-            print("  %s: 无新增(已有 %d 行, 全部重复)" % (rel, lines))
+            print("  %s: 无新增(已有 %d 行, 全部重复)" % (rel, lines_count))
+
+    # —— 源文件清理(全部记录已收录进目标 JSONL 的 Data 侧采集批次) ——
+    deletable, protected = plan_deletions(tracked, target_lines)
+    deleted = del_failed = 0
+    for f, why in protected:
+        log("  保留源文件 %s: %s" % (f.relative_to(root).as_posix(), why))
+    if not args.keep_source:
+        for f in deletable:
+            rel = f.relative_to(root).as_posix()
+            if args.dry_run:
+                log("  [DRY-RUN] 将删除源文件: %s" % rel)
+                continue
+            try:
+                f.unlink()
+            except OSError as exc:
+                print("[ERROR] 删除源文件失败: %s -> %s" % (rel, exc))
+                del_failed += 1
+                continue
+            print("  已删除源文件: %s" % rel)
+            deleted += 1
 
     print("\n======== 转换结束 %s ========" % ("(dry-run)" if args.dry_run else ""))
     print("扫描记录: %d 条" % total_recs)
     if not args.dry_run:
         print("新增行  : %d 行" % total_new)
+    if args.keep_source:
+        print("源文件清理: 已用 --keep-source 关闭, 保留 Data 侧源文件 %d 个"
+              % len(tracked))
+    elif args.dry_run:
+        print("源文件清理: 将删除 %d / 保留 %d / 共 %d 个 Data 侧源文件"
+              "(dry-run 不实际删除)" % (len(deletable), len(protected), len(tracked)))
+    else:
+        print("源文件清理: 删除 %d / 失败 %d / 保留 %d / 共 %d 个 Data 侧源文件"
+              % (deleted, del_failed, len(protected), len(tracked)))
+    if del_failed:
+        print("存在删除失败的源文件, 请查看上方 [ERROR] 行")
+        sys.exit(1)
     print("全部完成")
 
 
