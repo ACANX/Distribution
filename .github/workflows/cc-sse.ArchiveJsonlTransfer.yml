@@ -1,0 +1,79 @@
+# cc-sse.ArchiveJsonlTransfer —— CC/SSE 归档 JSONL 跨仓库转存到 acdnx/Distribution
+# =============================================================================
+#
+# 每日把本仓库(ACANX/Distribution) cc-sse 分支 Archive/CC/SSE/ 下已归档的
+# .jsonl, 经 GitHub Contents API 转存到**另一个仓库** acdnx/Distribution 的
+# cc-sse 分支**同路径**下(文件名与目录结构原样保留)。
+#
+# 与 quote-gold.GoldQuoteArchiveTransfer / news.PublishNewsFlashJsonl 同一套
+# 跨仓库约定(重要):
+#   * ACANX/Distribution 与 acdnx/Distribution 是两个真实存在的独立仓库, 不是
+#     同一仓库的大小写变体。转存目标显式写死(脚本内置 + 本文件 env 注入),
+#     绝不经 .git 解析 —— 否则会写回本仓库自身。
+#   * GIT_COMMIT_TOKEN 需同时具备两个仓库的权限: 读本仓库(checkout 检出用),
+#     写 acdnx/Distribution 的 cc-sse 分支(Contents API 提交用)。
+#   * 脚本经 blob sha 幂等比对(与转存端同路径文件的 sha 相同即跳过), 定期重跑
+#     不产生内容不变的空提交; 源文件不删, 转存端多余文件也不删。
+#   * 本工作流只从本仓库读数据、不写本仓库, 不与本仓库其它数据推送产生 push 竞争。
+#
+# 调度: 北京时间每日 06:40(UTC 22:40), 排在 cc-sse 侧归档任务(02:37)与
+# apm 侧转存(06:20)之后, 两条线的转存相互错开, 也避开整点与半点。
+# 注意 schedule 只在默认分支 dev 上生效; actions/checkout 的 ref 指向脚本
+# 实际所在的 cc-sse 分支。
+
+name: cc-sse.ArchiveJsonlTransfer
+
+on:
+  schedule:
+    - cron: "40 22 * * *"   # UTC 22:40 = 北京时间 06:40
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "只打印将要转存的文件, 不实际提交"
+        type: boolean
+        default: false
+      date:
+        description: "只转存该日期(YYYYMMDD)的归档文件, 留空=不限"
+        type: string
+        default: ""
+
+permissions:
+  contents: read   # 只读本仓库; 对 acdnx 的写入经 GIT_COMMIT_TOKEN 走 API
+
+concurrency:
+  group: CcSseArchiveJsonlTransfer
+  cancel-in-progress: false
+
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout cc-sse (脚本与源数据所在分支)
+        uses: actions/checkout@v5
+        with:
+          ref: cc-sse
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Transfer archive jsonl to acdnx/Distribution
+        env:
+          GIT_COMMIT_TOKEN: ${{ secrets.GIT_COMMIT_TOKEN }}
+          # 转存端身份(须与脚本内置默认一致; 两个仓库是独立仓库, 不是大小写变体)
+          ARCHIVE_TRANSFER_TARGET_OWNER: acdnx
+          ARCHIVE_TRANSFER_TARGET_REPO: Distribution
+          ARCHIVE_TRANSFER_BRANCH: cc-sse
+          # workflow_dispatch 手动触发时可按日期收窄; 定时触发为空 = 不限
+          ARCHIVE_TRANSFER_DATE: ${{ github.event_name == 'workflow_dispatch' && inputs.date || '' }}
+        run: |
+          ARGS=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ inputs.dry_run }}" = "true" ]; then
+              ARGS="$ARGS --dry-run"
+            fi
+          fi
+          python3 .github/Python/CC/ArchiveJsonlTransfer.py $ARGS
