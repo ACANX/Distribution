@@ -4,7 +4,7 @@
 #     下按日归档的 JSON 数组文件增量转换为 JSONL, 保存到 Archive/Finv/News/FlashFutu/
 #   - 手动触发: Actions 页 Run workflow
 # 运行分支: 检出 news 分支(脚本与源数据均在 news), 转换结果提交并推回 news
-name: FlashFutuConvert
+name: news.FlashFutuConvert
 
 on:
   schedule:
@@ -36,19 +36,23 @@ jobs:
         shell: bash
         run: |
           # 从仓库根运行脚本; 将 Data/Finv/News/FlashFutu/<year>/<yyyymmdd>.json
-          # 转换为 JSONL 写入 Archive/Finv/News/FlashFutu/<year>/<yyyymmdd>.jsonl,
+          # 转换为 JSONL 写入 Archive/Finv/News/FlashFutu/<year>/
+          # News_Flash_FlashFutu_DAY_FT_<yyyymmdd>.jsonl (规范命名),
           # 便于下一步 git add 直接匹配。
           # 语法错误的 JSON 文件自动跳过; 目标已存在时按 id 增量合并去重。
-          # 验证期默认不删除源 JSON 文件; 流程跑通后如需启用"转换后删除 N 天前
-          # 的源 JSON", 在下方命令追加参数, 例如:
-          #   --keep-json-days 7  (仅保留最近 7 天的源 JSON, 更早的已转换源文件删除)
+          # 删除开关由脚本同目录的 FlashFutuConvert.json 的 KeepJsonDays 决定
+          # (当前 3): 转换成功且早于 N 天的源 JSON 会被删除, 最近 N 天保留作缓冲。
+          # 注意删除发生在 **Data/** 下, 必须由下一步一并 git add, 否则删除只存在于
+          # runner 的工作副本里, 容器销毁即丢失 —— 表现为源 JSON 每天删、每天又回来。
           python3 .github/Python/Flash/FlashFutuConvertJSONToJSONL.py --log
       - name: 提交并推送数据(到 news)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # 归档目录
+          # 归档目录(新增/更新的 JSONL)
           git add "Archive/Finv/News/FlashFutu/**"
+          # 源目录(-A 以覆盖转换后删除的源 JSON, 见上一步注释)
+          git add -A "Data/Finv/News/FlashFutu"
           # 固定推送到 news 分支
           if git diff --cached --quiet; then
             echo "没有新增数据, 跳过提交"
