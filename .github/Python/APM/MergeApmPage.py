@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-merge_apm_page —— Page 埋点 Data 侧批次按日聚合为 JSONL(Contents API 提交)
+MergeApmPage —— Page 埋点 Data 侧批次按日聚合为 JSONL(Contents API 提交)
 ================================================================================
 
 历史版本说明
@@ -29,9 +29,9 @@ merge_apm_page —— Page 埋点 Data 侧批次按日聚合为 JSONL(Contents A
 
 用法
 ----
-    python3 .github/Python/APM/merge_apm_page.py                # 聚合"今天"
-    python3 .github/Python/APM/merge_apm_page.py --date 20260629
-    python3 .github/Python/APM/merge_apm_page.py --dry-run
+    python3 .github/Python/APM/MergeApmPage.py                # 聚合"今天"
+    python3 .github/Python/APM/MergeApmPage.py --date 20260629
+    python3 .github/Python/APM/MergeApmPage.py --dry-run
 
     本文件是 .github/Python/APM/APMJsonlConvert.DailyJsonl.py 的薄封装
     (限定 --type Page 且只扫 Data 侧), 分组/合并/提交逻辑全部在前者维护。
@@ -55,7 +55,7 @@ _SPEC.loader.exec_module(_mod)
 
 TYPE = "Page"
 
-# ── 路径(与原 merge_apm_page.py 的 DATA_DIR 一致) ─────────────────────────────
+# ── 路径(与原 MergeApmPage.py 的 DATA_DIR 一致) ─────────────────────────────
 DATA_DIR = "Data/Meta/WebMMCP/APM/" + TYPE
 
 

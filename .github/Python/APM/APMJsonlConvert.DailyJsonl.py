@@ -280,7 +280,7 @@ def main() -> None:
                         help="JSONL 落点根目录(默认 %s)" % DEFAULT_ARCHIVE_DIR)
     parser.add_argument("--data-only", action="store_true",
                         help="只扫采集批次目录, 不把 merge 历史输出当源"
-                             "(merge_apm_*.py 委托本脚本时默认开启)")
+                             "(MergeApm*.py 委托本脚本时默认开启)")
     parser.add_argument("--dry-run", action="store_true",
                         help="只统计将要提交的内容, 不实际提交")
     parser.add_argument("--log", action="store_true",
