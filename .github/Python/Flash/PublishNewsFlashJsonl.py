@@ -81,8 +81,8 @@
     --log         : 打印每个文件的处理详情
 
 日志格式:
-    **每一行最左侧**都带东八区(UTC+8)时间戳, 格式 yyyyMMdd.HHmmss.SSS:
-        20260916.105958.123 提交端 acdnx/Distribution 上已有相同内容(sha 相同), 无需提交
+    **每一行最左侧**都带东八区(UTC+8)时间戳, 格式 yyMMdd.HHmmss.SSS:
+        260916.105958.123 提交端 acdnx/Distribution 上已有相同内容(sha 相同), 无需提交
     注意 GitHub Actions 页面自身标注的是 UTC 时间, 与本时间戳相差 8 小时, 别对错表。
 
     凡涉及"哪个仓库"一律写全 owner/repo。本脚本牵涉两个**同名**仓库
@@ -267,15 +267,15 @@ def localBlobSha(abs_path: str) -> Optional[str]:
 # 日志时间戳
 # ---------------------------------------------------------------------------
 
-# 日志行首时间戳: yyyyMMdd.HHmmss.SSS, 如 20260916.105958.123
+# 日志行首时间戳: yyMMdd.HHmmss.SSS, 如 260916.105958.123
 # 时区固定北京时间(UTC+8), 与脚本内 KeepJsonDays/cron 注释的口径一致。
 # 注意 GitHub Actions 页面自身显示的是 UTC, 两者相差 8 小时, 别对错时间。
-LOG_TS_FORMAT = "%Y%m%d.%H%M%S"
+LOG_TS_FORMAT = "%y%m%d.%H%M%S"
 BEIJING_TZ = timezone(timedelta(hours=8))
 
 
 def logTimeStamp() -> str:
-    """当前北京时间的 yyyyMMdd.HHmmss.SSS 字符串。"""
+    """当前北京时间的 yyMMdd.HHmmss.SSS 字符串。"""
     now = datetime.now(BEIJING_TZ)
     return "%s.%03d" % (now.strftime(LOG_TS_FORMAT), now.microsecond // 1000)
 
@@ -455,7 +455,7 @@ def collectTasks(archive_dir: str, repo_root: str,
 
 def main(argv: Optional[List[str]] = None) -> int:
     _ensure_console_utf8()
-    # 之后再打印的每一行都会带上东八区(yyyyMMdd.HHmmss.SSS)行首时间戳
+    # 之后再打印的每一行都会带上东八区(yyMMdd.HHmmss.SSS)行首时间戳
     enableLogTimestamps()
 
     parser = argparse.ArgumentParser(
