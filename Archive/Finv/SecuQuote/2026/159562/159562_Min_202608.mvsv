@@ -4,20 +4,20 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 5061
-# 采集时间 : "2026-09-16 15:04:12"
+# 采集时间 : "2026-09-17 15:32:10"
 # 证券代码 : 159562
 # 市场 : cny
-# 备注 : "汇总: c=2401|h=2406|l=2232|cnt=1205"
+# 备注 : "汇总: c=2402|h=2392|l=2226|cnt=1205"
 # Title : 159562 Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 5061
-# FetchTime : "2026-09-16 15:04:12"
+# FetchTime : "2026-09-17 15:32:10"
 # SecuCode : 159562
 # Market : cny
-# Remark : "汇总: c=2401|h=2406|l=2232|cnt=1205"
+# Remark : "汇总: c=2402|h=2392|l=2226|cnt=1205"
 
 1785720600|20260803|093000|2.055|2.053|||594900|1221329.7|-0.002|-0.10
 1785720660|20260803|093100|2.053|2.035|||971600|1982200.2|-0.02|-0.97
