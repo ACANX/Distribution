@@ -19,12 +19,12 @@ class MVSVMetadata:
     CN_FIELDS = [
         "标题", "数据供应商",
         "字段", "字段名称", "字段类型",
-        "计数", "采集时间",
-        "证券代码", "市场", "备注"
+        "计数",
+        "证券代码", "市场"
     ]
     EN_FIELDS = [
         "Title", "DataProvider", "Field", "FieldName", "FieldType",
-        "Count", "FetchTime", "SecuCode", "Market", "Remark"
+        "Count", "SecuCode", "Market"
     ]
     STANDARD_KEYS = set(CN_FIELDS + EN_FIELDS)
 
@@ -119,7 +119,7 @@ def _ensure_datetime_cols(rows, now_bjt):
 
 
 def _expand_to_11cols(data):
-    """Expand 8-col rows to 11-col: ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent.
+    """Expand 8-col rows to 11-col: ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangeRatio.
     Open:
       - First row: Close - ChangePrice (precision matched to input)
       - Subsequent rows with ts diff == 60s: prev Close
@@ -177,7 +177,7 @@ def _expand_to_11cols(data):
             r[4],              # Volume
             r[5],              # Turnover
             r[7],              # ChangePrice
-            r[6],              # ChangePercent
+            r[6],              # ChangeRatio
         ]
         new_rows.append(new_row)
         prev_close = close
@@ -187,9 +187,9 @@ def _expand_to_11cols(data):
     _set_meta_11cols(data.metadata)
     return data
 
-_11_FIELD = "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
+_11_FIELD = "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangeRatio"
 _11_FIELD_CN = _11_FIELD
-_11_NAME = "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
+_11_NAME = "时间戳|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅"
 _11_NAME_EN = "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 _11_TYPE = "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 
@@ -207,7 +207,7 @@ def _set_meta_11cols(meta):
 # 8-column format constants (intermediate, with Date/Time)
 _DT_FIELD = "Ts|Date|Time|c|v|t|r|cp"
 _DT_FIELD_CN = "Ts|Date|Time|c|v|t|r|cp"
-_DT_NAME = "时间戳(UTC)|日期|时间|收盘价|成交量|成交额|涨跌幅(%)|涨跌值"
+_DT_NAME = "时间戳|日期|时间|收盘价|成交量|成交额|涨跌幅|涨跌值"
 _DT_NAME_EN = "Ts|Date|Time|Close|Volume|Turnover|ChangePercent|ChangePrice"
 _DT_TYPE = "int|int|int|Decimal|Decimal|Decimal|str|Decimal"
 
@@ -317,7 +317,7 @@ def merge_and_dedup(existing, incoming, *, now_bjt):
     md["市场"] = m
     md["Market"] = m
 
-    md["备注"] = inc.get("备注") or ex.get("备注") or ""
+    # md["备注"] = inc.get("备注") or ex.get("备注") or ""
     ren = inc.get("Remark") or ex.get("Remark")
     if ren:
         md["Remark"] = ren
@@ -325,8 +325,8 @@ def merge_and_dedup(existing, incoming, *, now_bjt):
     md["计数"] = str(len(sorted_rows))
     md["Count"] = str(len(sorted_rows))
     ft = now_bjt.strftime("%Y-%m-%d %H:%M:%S")
-    md["采集时间"] = ft
-    md["FetchTime"] = ft
+    # md["采集时间"] = ft
+    # md["FetchTime"] = ft
     if dt_added or len(sorted_rows[0]) >= 8:
         _update_meta_with_datetime(md)
     md.extra = {**ex.extra, **inc.extra}
