@@ -4,19 +4,20 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 241
-# 采集时间 : "2026-09-18 03:44:51"
 # 证券代码 : 159937
 # 市场 : cny
-# 备注 : "汇总: c=9062|h=8940|l=8771|cnt=1205"
 # Title : 159937 Minute Quote Data
 # DataProvider : FT
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 241
-# FetchTime : "2026-09-18 03:44:51"
 # SecuCode : 159937
+# USC : 159937
 # Market : cny
+# FetchTime : "2026-09-18 13:12:07"
+# 备注 : "汇总: c=8923|h=8929|l=8771|cnt=1085"
+# 采集时间 : "2026-09-18 13:12:07"
 
 1787794200|20260827|093000||9.472|||80500|762496|-0.019|-0.20
 1787794260|20260827|093100|9.472|9.476|||942000|8921465.9|-0.015|-0.16
