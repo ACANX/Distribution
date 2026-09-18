@@ -318,9 +318,9 @@ def merge_and_dedup(existing, incoming, *, now_bjt):
     md["Market"] = m
 
     # md["备注"] = inc.get("备注") or ex.get("备注") or ""
-    ren = inc.get("Remark") or ex.get("Remark")
-    if ren:
-        md["Remark"] = ren
+    # ren = inc.get("Remark") or ex.get("Remark")
+    # if ren:
+    #     md["Remark"] = ren
 
     md["计数"] = str(len(sorted_rows))
     md["Count"] = str(len(sorted_rows))
