@@ -24,7 +24,7 @@ class MVSVMetadata:
     ]
     EN_FIELDS = [
         "Title", "DataProvider", "Field", "FieldName", "FieldType",
-        "Count", "SecuCode", "Market"
+        "Count", "SecuCode", "USC", "Market"
     ]
     STANDARD_KEYS = set(CN_FIELDS + EN_FIELDS)
 
