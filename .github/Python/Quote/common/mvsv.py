@@ -308,6 +308,7 @@ def merge_and_dedup(existing, incoming, *, now_bjt):
     md["FieldType"] = inc.get("FieldType") or ex.get("FieldType") or ""
     md["证券代码"] = inc.get("证券代码") or ex.get("证券代码") or ""
     md["SecuCode"] = inc.get("SecuCode") or ex.get("SecuCode") or ""
+    md["USC"] = inc.get("SecuCode") or ex.get("SecuCode") or ""
 
     from common.timeutil import infer_market_from_code
     m = inc.get("市场") or inc.get("Market") or ex.get("市场") or ex.get("Market") or ""
