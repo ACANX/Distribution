@@ -1,23 +1,23 @@
 # 标题 : 01810 分钟级行情数据
 # 数据供应商 : FT
-# 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
-# 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
+# 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangeRatio"
+# 字段名称 : "时间戳|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 331
 # 证券代码 : 01810
 # 市场 : cny
 # Title : 01810 Minute Quote Data
 # DataProvider : FT
-# Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
+# Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangeRatio"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 331
 # SecuCode : 01810
 # USC : 01810
 # Market : cny
-# FetchTime : "2026-09-18 15:32:06"
-# 备注 : "汇总: c=26360|h=27360|l=25620|cnt=1611"
-# 采集时间 : "2026-09-18 15:32:06"
+# FetchTime : "2026-09-18 17:31:45"
+# 备注 : "汇总: c=26360|h=27360|l=25620|cnt=1655"
+# 采集时间 : "2026-09-18 17:31:45"
 
 1787016600|20260818|093000||25.5|||619400|15794700|-0.38|-1.47
 1787016660|20260818|093100|25.5|25.68|||3271200|83207860|-0.2|-0.77
