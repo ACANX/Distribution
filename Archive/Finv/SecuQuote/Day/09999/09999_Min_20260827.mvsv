@@ -1,23 +1,23 @@
 # 标题 : 09999 分钟级行情数据
 # 数据供应商 : FT
-# 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
-# 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
+# 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangeRatio"
+# 字段名称 : "时间戳|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 331
 # 证券代码 : 09999
 # 市场 : cny
 # Title : 09999 Minute Quote Data
 # DataProvider : FT
-# Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
+# Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangeRatio"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 331
 # SecuCode : 09999
 # USC : 09999
 # Market : cny
-# FetchTime : "2026-09-18 15:12:05"
-# 备注 : "汇总: c=182100|h=188500|l=181100|cnt=1591"
-# 采集时间 : "2026-09-18 15:12:05"
+# FetchTime : "2026-09-19 11:16:45"
+# 备注 : "汇总: c=182100|h=188500|l=181100|cnt=1655"
+# 采集时间 : "2026-09-19 11:16:45"
 
 1787794200|20260827|093000||196.5|||188800|37099200|1|0.51
 1787794260|20260827|093100|196.5|197.6|||57100|11242480|2.1|1.07
