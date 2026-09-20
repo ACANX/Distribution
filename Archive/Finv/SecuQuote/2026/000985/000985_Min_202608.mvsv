@@ -1,24 +1,24 @@
 # 标题 : 000985 分钟级行情数据
 # 数据供应商 : FT
-# 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
-# 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
+# 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangeRatio"
+# 字段名称 : "时间戳|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 5061
 # 证券代码 : 000985
 # 市场 : cny
 # Title : 000985 Minute Quote Data
 # DataProvider : FT
-# Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
+# Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangeRatio"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 5061
 # SecuCode : 000985
 # USC : 000985
 # Market : cny
-# FetchTime : "2026-09-18 13:42:06"
+# FetchTime : "2026-09-19 23:56:45"
 # Remark : "汇总: c=18030|h=18090|l=17030|cnt=964; 月归档缺失交易日: 20260803"
-# 备注 : "汇总: c=17040|h=17540|l=16340|cnt=1111"
-# 采集时间 : "2026-09-18 13:42:06"
+# 备注 : "汇总: c=17040|h=17540|l=16340|cnt=1205"
+# 采集时间 : "2026-09-19 23:56:45"
 
 1785720600|20260803|093000|14.39|14.4|||9500|136800|0.01|0.07
 1785720660|20260803|093100|14.4|14.4|||97500|1406474|0.01|0.07
@@ -2189,7 +2189,7 @@
 1786604280|20260813|145800|15.47|15.47|||0|0|-0.06|-0.39
 1786604340|20260813|145900|15.47|15.47|||0|0|-0.06|-0.39
 1786604400|20260813|150000|15.47|15.47|||15400|238238|-0.06|-0.39
-1786671000|20260814|093000||15.49|||6100|94489|0.02|0.13
+1786671000|20260814|093000|15.47|15.49|||6100|94489|0.02|0.13
 1786671060|20260814|093100|15.49|15.42|||59900|924761|-0.05|-0.32
 1786671120|20260814|093200|15.42|15.37|||37500|577648|-0.1|-0.65
 1786671180|20260814|093300|15.37|15.36|||9900|152522|-0.11|-0.71
