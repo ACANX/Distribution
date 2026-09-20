@@ -118,7 +118,7 @@ CHINA_TIMEZONE = datetime.timezone(datetime.timedelta(hours=8))
 # .mvsv 列定义（与既有 GLD_Min_*.mvsv / GCMain_Min_*.mvsv 逐列一致）
 MVSV_FIELDS = [
     "Ts", "Date", "Time", "Open", "Close", "Low", "High",
-    "Volume", "Turnover", "ChangePrice", "ChangePercent",
+    "Volume", "Turnover", "ChangePrice", "ChangeRatio",
 ]
 MVSV_FIELD_NAMES = [
     "时间戳(UTC)", "日期", "时间", "开盘价", "收盘价", "最低价", "最高价",
@@ -884,7 +884,7 @@ def buildSuccessMvsv(
     列映射（与既有行情 .mvsv 一致）：
       Ts ← time；Date/Time ← Ts 的 UTC+8 日历值；Open ← 上一根的 Close；
       Close ← cc_price（缺失可回退 price）；Low/High 留空；Volume ← volume；
-      Turnover ← turnover；ChangePrice ← change_price；ChangePercent ← ratio。
+      Turnover ← turnover；ChangePrice ← change_price；ChangeRatio ← ratio。
 
     Args:
         record: 映射记录。
