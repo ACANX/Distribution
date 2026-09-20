@@ -1,0 +1,117 @@
+name: VerifyQuoteMinute
+
+# 触发方式
+#   1) workflow_dispatch —— 主通道：由外部触发器（调度器 / 人工）指定 usc 调起，参数经
+#      INPUT_* 环境变量透传给 .github/Python/VerifyQuoteMinute.py；
+#   2) schedule —— 可选通道：从仓库内清单文件读取待验证 usc。
+#      注意：schedule 只在【默认分支】上的工作流文件生效；若本文件只在 quote-meta 分支，
+#      需先把工作流放到默认分支（或把 quote-meta 设为默认分支），否则定时触发不会执行。
+on:
+  workflow_dispatch:
+    inputs:
+      usc:
+        description: '待验证证券的 usc，多个用逗号或空白分隔；留空则改读仓库内清单文件'
+        required: false
+        default: ''
+        type: string
+      branch:
+        description: '产物提交目标分支'
+        required: false
+        default: 'quote-meta'
+        type: string
+      checkout_ref:
+        description: '检出哪个分支上的任务脚本；留空 = 本次 dispatch 的 ref'
+        required: false
+        default: ''
+        type: string
+      markets:
+        description: '只处理这些行情市场段（逗号分隔，留空不限）'
+        required: false
+        default: ''
+        type: string
+      interval:
+        description: '相邻两次请求的最小间隔秒数'
+        required: false
+        default: '10'
+        type: string
+      limit:
+        description: '本批最多处理多少条（0 表示不限）'
+        required: false
+        default: '0'
+        type: string
+      price_field:
+        description: '收盘价取用口径：auto / cc_price / price'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - cc_price
+          - price
+      dry_run:
+        description: '只本地生成 .mvsv，不提交到仓库'
+        required: false
+        default: false
+        type: boolean
+      allow_verify_failure:
+        description: '验证失败时也判定为执行成功（不影响 Fail 件回写）'
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    # 每天 01:17 UTC（= 09:17 北京时间）跑一次清单文件里的 usc
+    - cron: '17 1 * * *'
+
+run-name: VerifyQuoteMinute ${{ inputs.usc || '(清单文件)' }}
+
+# 产物要提交回仓库，必须有写权限；Job 内用 github.token 兜底
+permissions:
+  contents: write
+
+# 同一时刻只跑一个采集任务，避免并发提交互相覆盖
+concurrency:
+  group: verify-quote-minute-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: 采集并回写五日分钟行情
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 检出任务脚本
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref || github.ref }}
+
+      - name: 准备 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 采集并回写 .mvsv
+        env:
+          # 提交令牌：优先仓库密钥，未配置时用 Actions 内置令牌（需上面的 contents: write）
+          GITHUB_COMMIT_TOKEN: ${{ secrets.GITHUB_COMMIT_TOKEN || github.token }}
+          # 外部触发器指定的参数，经 INPUT_* 透传给 Python 脚本
+          INPUT_USC: ${{ inputs.usc }}
+          INPUT_BRANCH: ${{ inputs.branch }}
+          INPUT_MARKETS: ${{ inputs.markets }}
+          INPUT_INTERVAL: ${{ inputs.interval }}
+          INPUT_LIMIT: ${{ inputs.limit }}
+          INPUT_PRICE_FIELD: ${{ inputs.price_field }}
+          INPUT_OUT_DIR: verify-out
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_ALLOW_VERIFY_FAILURE: ${{ inputs.allow_verify_failure }}
+          PYTHONIOENCODING: utf-8
+        run: |
+          python3 .github/Python/VerifyQuoteMinute.py
+
+      - name: 留档本次生成本地副本
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-out
+          path: verify-out/
+          if-no-files-found: warn
+          retention-days: 14
