@@ -4,7 +4,7 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 1205
-# 采集时间 : "2026-09-21 01:59:55"
+# 采集时间 : "2026-09-21 02:00:07"
 # 证券代码 : 002103
 # 市场 : SZ
 # 备注 : "汇总: K线=1205|首根=1789349400|末根=1789714800|昨收=6600"
@@ -14,7 +14,7 @@
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 1205
-# FetchTime : "2026-09-21 01:59:55"
+# FetchTime : "2026-09-21 02:00:07"
 # SecuCode : 002103
 # Market : SZ
 # 以下为本程序追加的元信息（读取方可忽略）
@@ -36,7 +36,7 @@
 # 昨收价 : 6600
 # 任务脚本 : VerifyQuoteMinute.py
 # 任务版本 : 1
-# 采集时刻 : 2026-09-21 01:59:55
+# 采集时刻 : 2026-09-21 02:00:07
 
 1789349400|20260914|093000|6600|6.56|||3600|23616|-0.04|-0.61
 1789349460|20260914|093100|6.56|6.58|||54600|358612|-0.02|-0.30
