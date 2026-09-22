@@ -1,0 +1,40 @@
+# 标题 : 163807 分钟级行情数据
+# 数据供应商 : FT
+# 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
+# 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
+# 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
+# 计数 : 0
+# 采集时间 : "2026-09-23 03:15:34"
+# 证券代码 : 163807
+# 市场 : SZ
+# 备注 : "汇总: 验证失败|K线=0|错误代码=EMPTY"
+# Title : 163807 Minute Quote Data
+# DataProvider : FT
+# Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
+# FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
+# FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
+# Count : 0
+# FetchTime : "2026-09-23 03:15:34"
+# SecuCode : 163807
+# Market : SZ
+# 以下为本程序追加的元信息（读取方可忽略）
+# 统一证券代码 : 163807
+# 富途代码 : 163807
+# URL类型段 : etfs
+# 行情市场段 : SZ
+# 证券名称 : 中银行业优选
+# 富途证券id : 2163807
+# 时间口径 : Ts 为 Unix 秒（UTC）；Date/Time 为同一时刻的 UTC+8 日历值
+# 价格口径 : Close 取接口的复权价，Open 取上一根的 Close，首根取昨收价
+# 验证结论 : FAILED
+# 错误代码 : EMPTY
+# 错误原因 : 接口返回成功但 K 线为空
+# 请求参数 : "stockId=2163807|marketType=4|type=2|marketCode=31|instrumentType=4|subInstrumentType=4001"
+# 请求地址 : https://www.moomoo.com/quote-api/quote-v2/get-quote-minute
+# 映射来源 : UscFutuMapping.jsonl @ .github/Python/UscFutuMapping.jsonl
+# 索引摘要 : ddd872e70826558e
+# 索引条数 : 18278
+# 任务脚本 : VerifyQuoteMinute.py
+# 任务版本 : 1
+# 采集时刻 : 2026-09-23 03:15:34
+# 失效提示 : 本件为失败留痕；若 Verify/Success/ 下存在同名且采集时刻更晚的文件，以成功件为准
