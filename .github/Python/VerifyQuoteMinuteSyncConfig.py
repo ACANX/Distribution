@@ -12,7 +12,7 @@
     INPUT_SYNC_PROBABILITY       本轮是否执行的命中概率（0-100，默认 100）
     INPUT_SYNC_BATCH_SIZE        单轮最多同步多少条（默认 50，0 = 不限）
     INPUT_SYNC_SAMPLE_LIMIT      从 Verify/Success/ 清单头部最多补齐多少条（默认 47）
-    INPUT_SYNC_CONCURRENCY       并发写库的线程数（默认 6）
+    INPUT_SYNC_ALLOW_INSERT      缺行的证券是否允许新建（默认 false = 只留痕）
     INPUT_SYNC_DRY_RUN           置真则只打印将要执行的 SQL，不写库、不提交
     SUPABASE_PROJECT_REF         Supabase 项目引用（必填）
     SUPABASE_KEY                 Supabase API 密钥（service-role；必填，不落日志）
@@ -22,9 +22,9 @@
     一、工具定位        为什么需要这一步、与 VerifyQuoteMinute.py 的分工
     二、抽样规则        概率闸门 → 本批 → 清单头部补齐
     三、映射表          由 .mvsv 文件名取 usc，经 idx + JSONL 反序列化出查询参数
-    四、更新规则        两张表的字段映射、flag_enable、dt_update、以及三处刻意的收窄
-    五、PostgREST 调用  批量读现状 + 逐行 PATCH（含重试与并发）
-    六、未命中处理      写 Verify/MisMatch/{usc}.txt 并提交到产物分支
+    四、更新规则        两张表的字段映射、flag_enable、dt_update、批量 upsert 与三处刻意的收窄
+    五、PostgREST 调用  批量读现状 + 每表一条批量 upsert（含重试与分块）
+    六、未命中与插入    缺行时留痕还是新建（INPUT_SYNC_ALLOW_INSERT）、新增行如何被单独列出
     七、日志与摘要      逐条字段级日志、dry-run 的 SQL 计划、Actions 步骤摘要
     八、退出码
     九、尚未实现        同步成功后的删除（留位，暂不开启）
@@ -74,7 +74,7 @@ instrumentType / subInstrumentType / typeSecu / secuRegion / secuMarket），且
 --------------------------------------------------------------------------------
 两张表都以 stockId 关联（取值即映射记录的 stockId）：
 
-    finv_quote_futu_collect   主键 stockId
+    finv_quote_futu_collect   主键 stockId     —— 富途采集配置表
         quote_market       ← quoteMarket
         type_symbol        ← typeSymbol
         futu_symbol        ← futuSymbol
@@ -85,7 +85,7 @@ instrumentType / subInstrumentType / typeSecu / secuRegion / secuMarket），且
         flag_enable        ← '1'（写死，不取映射记录的 flagEnable）
         dt_update          ← 本次写入时刻
 
-    finv_quote_secu           主键 usc，本脚本按 sid = stockId 关联
+    finv_quote_secu           主键 usc          —— 证券元数据登记表（sid = 映射记录的 stockId）
         region             ← secuRegion
         market             ← secuMarket
         name_sc            ← nameSc
@@ -93,53 +93,105 @@ instrumentType / subInstrumentType / typeSecu / secuRegion / secuMarket），且
         flag_enable        ← '1'
         dt_update          ← 本次写入时刻
 
+写库方式：**每张表一条批量 upsert**（POST + Prefer: resolution=merge-duplicates），不逐行 PATCH ——
+每行的取值各不相同，PATCH 只能「一份 body 命中多行」，而 upsert 的多行 body 正是「N 行不同值、
+一次请求」的唯一表达方式：
+
+    POST {table}?on_conflict=<主键>
+         Prefer: resolution=merge-duplicates,return=representation
+         body = [{主键: ..., 待更新字段...}, ...]
+
+    等价 SQL：INSERT INTO {table} (列…) VALUES (…), (…)
+              ON CONFLICT (主键) DO UPDATE SET 列 = EXCLUDED.列, …;
+
+提交时按「已在册 / 缺行」分两批（用写入前的现状快照判定，不靠 SQL 里的 CASE 区分）：
+
+    已在册的行 → upsert → 走 DO UPDATE 分支，创建时间不被改写；
+    缺行的行   → 依 INPUT_SYNC_ALLOW_INSERT：
+                 真：单独一条 upsert 插入（补 dt_create = 本次时刻；futu 表另补 type='2'），
+                     插入的行在日志与摘要里**单独列出**，便于事后核查与修正；
+                 假（默认）：不插入，写 Verify/MisMatch/{usc}.txt 留痕，人工决定是否补录。
+
+两批不合一条 body 的原因：PostgREST 的 INSERT 与 DO UPDATE SET 共用同一份列清单，body 里带
+dt_create 会让**更新**也把创建时间刷成现在。拆开后各自语义干净，且缺行是极少数
+（实测 3370 个 Success usc 里只有 11 条不在 futu 表），不会明显增加请求数。
+
+⚠️ upsert 的硬性前提 —— 非空列（实测教训）：INSERT … ON CONFLICT 是**先按 INSERT 分支校验约束、
+再判定冲突**的，缺一列「NOT NULL 且无默认值」的列就直接报 23502，即使该行其实命中冲突、
+本该只走更新分支。实测 finv_quote_secu 的 region / market 就是这样：只带 flag_enable + dt_update
+的 upsert 会 400 失败（旧的逐行 PATCH 写法没有这个约束，所以此前没暴露）。因此：
+
+    启动时读一次 PostgREST OpenAPI（GET /rest/v1/，Accept: application/openapi+json），
+    取每张表 required 列里**没有默认值**的那些（即 INSERT 分支必须出现的列，主键除外）：
+        finv_quote_futu_collect  → 无（stockId 是主键，dt_create / dt_update 有默认值）
+        finv_quote_secu          → region、market
+    更新分支：payload 里缺的这些列按**库中现值原样回写**（值不变，只为让约束通过，
+              日志里以「= 补列」单列一行）；
+    新建分支：这些列必须由映射凑齐，凑不齐就不插入、转留痕（INSERT_REQUIRED_MISSING），
+              免得一条坏行把整块 upsert 拖失败。
+
+⚠️ upsert 的第二个前提 —— 行键必须一致：PostgREST 的批量 body 要求**每行的键完全相同**，
+否则整条请求 400（PGRST102 "All object keys must match"，实测）。而各行的变更字段本来就不同
+（A 行改了行情市场、B 行没改），故提交前按「同一批次内 payload 的并集」补列：更新批补库中
+现值（值不变），新建批补 null（该列此时必为可空）。这不改变任何真实取值，只让 body 形状一致。
+
 三处刻意的收窄（都是为了「宁可少写，不可写错」）：
-    ① secu 表除 sid 外还带 usc 过滤：该表实测存在 sid 重复行（sid=800000 同时挂在 usc=800000
-       与 usc=HSI 上），只按 sid 更新会连带改写同 sid 的其它证券。
+    ① 按主键写、不用业务键：secu 表的 `sid` 实测重复（sid=800000 同时挂在 usc=800000 与 usc=HSI
+       上），而 `usc` 才是主键（唯一）。故 secu 表按 usc 写，sid 只作校验 —— 现有行的 sid 与映射
+       记录的 stockId 不一致时打告警，但照常更新（按主键写不可能改错行）。
     ② 映射记录里为空值的字段**不写**：整表有 30 条记录缺 nameSc，硬写空值会抹掉库里的现成值，
        故跳过该字段并告警（同一条记录的其余字段照常更新）。
-    ③ 「已完全一致」的行不发写请求：字段全等且 flag_enable 已是 '1' 时整行跳过（连 dt_update
+    ③ 「已完全一致」的行不入批：字段全等且 flag_enable 已是 '1' 时整行跳过（连 dt_update
        也不动），这样重复运行几乎零写入，也不会把审计时间戳刷成无意义的噪声。
 
 --------------------------------------------------------------------------------
 五、PostgREST 调用
 --------------------------------------------------------------------------------
 照 .github/Python/QuoteCollect/SupabaseJobRepo.py 的 SupabaseRestClient 手法实现最小客户端：
-每个请求同时带 apikey 与 Authorization: Bearer，PATCH 一律带非空过滤条件（防误全表更新），
-靠 Prefer: return=representation 统计命中行数。
+每个请求同时带 apikey 与 Authorization: Bearer；写请求靠 Prefer: return=representation 回读
+写入结果，用于统计行数与区分「新增 / 更新」。缺省一轮 6 个请求：
 
-    GET   {table}?select=<cols>&<keyCol>=in.(...)    分块取现状（含重试）
-    PATCH {table}?<过滤条件>  body=待更新字段          命中行数 ≠ 1 记失败
+    GET  /rest/v1/  Accept: application/openapi+json   取非空列约束（每表 1 次，见第四节）
+    GET  {table}?select=<列…>&<主键>=in.(…)            分块取现状（READ_CHUNK = 150 键/请求）
+    POST {table}?on_conflict=<主键>                    批量 upsert（WRITE_CHUNK = 200 行/请求）
 
-写请求走线程池（INPUT_SYNC_CONCURRENCY，默认 6）；429/5xx 与网络类错误按指数退避重试。
+429/5xx 与网络类错误按指数退避重试（MAX_ATTEMPTS = 3）。一条 INSERT … ON CONFLICT 语句是
+**单个事务**：分块内的行要么全写入、要么全不写 —— 与逐行 PATCH 的「每行独立成败」不同，
+故失败按「块」记录（表名、动作、该块的键、HTTP 详情），一块失败不影响其余块。
 
 --------------------------------------------------------------------------------
-六、未命中处理
+六、未命中与插入
 --------------------------------------------------------------------------------
-判为「未命中」的 usc 不滞留在日志里，而是逐一写成 Verify/MisMatch/{usc}.txt 并提交到产物分支
+「未命中」的 usc 不滞留在日志里，而是逐一写成 Verify/MisMatch/{usc}.txt 并提交到产物分支
 （INPUT_BRANCH，即 quote-meta），文件内载明 usc、stockId、来源 .mvsv、缺哪张表、解析出的全部
 查询参数、检测时刻与工作流运行标识、处理建议。判为未命中的情形：
 
     INDEX_MISS            usc 不在 UscFutuMapping.jsonl.idx 中（无映射记录）
-    FUTU_ROW_MISSING      表中不存在该 stockId 的行
-    SECU_ROW_MISSING      表中不存在该 sid 的行
-    SECU_USC_MISMATCH     存在该 sid，但没有任何一行的 usc 与文件名一致
-    SECU_ROW_DUPLICATE    存在多行同 sid 且 usc 匹配（会只按其一带 usc 过滤更新，故留痕提示）
+    RECORD_FIELD_MISSING  映射记录缺关键字段（stockId/marketType/marketCode/instrumentType/subInstrumentType）
+    FUTU_ROW_MISSING      表里没有该 stockId 的行，且本轮未开启自动插入
+    SECU_ROW_MISSING      表里没有该 usc 的行，且本轮未开启自动插入
+    INSERT_REQUIRED_MISSING  表里缺行、且映射凑不齐该表的非空列（INSERT 分支必填），故本轮不插入
 
-本脚本**不会**向这两张表插入新行：缺行只留痕，补录与否由人工决定。
+INPUT_SYNC_ALLOW_INSERT 置真时，缺行的证券改为**新建**（不算未命中）。新增行会被单独盯住：
+「表内原本没有」由写入前的现状快照判定，落进该表的 inserts 批；写完后按回读结果逐条列出
+（步骤日志里以 ＋ 开头、末尾单列一行，运行摘要里也单列一节），便于事后核查与修正。
+
+「sid 与映射不一致」等可疑但不阻塞的情况只打告警（⚠），计入摘要的「告警」行，不产生留痕文件。
 
 --------------------------------------------------------------------------------
 七、日志与摘要
 --------------------------------------------------------------------------------
 每条证券的日志含：来源 .mvsv、usc、quoteMarket、stockId、映射记录取到的全部参数、两张表逐字段的
-「旧值 → 新值」、写入结果（HTTP 状态与命中行数）。dry-run 时改为打印等价 SQL（PostgreSQL 单引号
-字面量，可直接照抄执行）。步骤结束另写 Actions 运行摘要（$GITHUB_STEP_SUMMARY）。
+「旧值 → 新值」、以及「= 保持 / = 补列 / ! 跳过」三类未参与变更的字段。写库阶段改为按**批次**
+打印（每表每条语句一行：动作、行数、回读行数、该块的键）；dry-run 时打印等价 SQL
+（PostgreSQL 单引号字面量，多行只展开首行 + 「…共 N 行…」，可直接照抄执行）。
+步骤结束另写 Actions 运行摘要（$GITHUB_STEP_SUMMARY）。
 
 --------------------------------------------------------------------------------
 八、退出码
 --------------------------------------------------------------------------------
     0  正常结束（含「概率闸门未命中」与「有未命中记录但已留痕」这两种预期状态）
-    1  有写库失败、命中行数异常或 MisMatch 提交失败
+    1  有写库失败（按块记录，含整块失败）或 MisMatch 提交失败
     2  任务级错误（凭据缺失、映射产物不可用、目录列举失败、参数非法）
 
 --------------------------------------------------------------------------------
@@ -149,7 +201,6 @@ instrumentType / subInstrumentType / typeSecu / secuRegion / secuMarket），且
 留待后续单独评估：删除会改变产物台账，需要一并考虑 Fail 件回写与 MisMatch 的关系。
 """
 
-import concurrent.futures
 import datetime
 import json
 import os
@@ -186,13 +237,14 @@ DEFAULT_OUT_DIR = "verify-out"
 DEFAULT_PROBABILITY = 100
 DEFAULT_BATCH_SIZE = 50
 DEFAULT_SAMPLE_LIMIT = 47
-DEFAULT_CONCURRENCY = 6
+DEFAULT_ALLOW_INSERT = False
 
 # Supabase / PostgREST
 ENV_SUPABASE_REF = "SUPABASE_PROJECT_REF"
 ENV_SUPABASE_KEY = "SUPABASE_KEY"
 SUPABASE_REST_BASE = "https://%s.supabase.co/rest/v1"
 READ_CHUNK = 150            # 单次 GET 的 id 条数（控制 URL 长度）
+WRITE_CHUNK = 200           # 单次 POST 的行数（控制请求体大小；每条语句即一个事务）
 HTTP_TIMEOUT = 30
 MAX_ATTEMPTS = 3            # 单次请求的最大尝试次数（含首次）
 RETRY_BACKOFF = 2.0         # 重试退避基数（秒）：第 n 次退避 RETRY_BACKOFF * 2^(n-1)
@@ -207,7 +259,7 @@ FUTU_FIELDS = (("quote_market", "quoteMarket"), ("type_symbol", "typeSymbol"),
                ("subInstrumentType", "subInstrumentType"))
 
 SECU_TABLE = "finv_quote_secu"
-SECU_KEY = "sid"
+SECU_KEY = "usc"
 SECU_FIELDS = (("region", "secuRegion"), ("market", "secuMarket"),
                ("name_sc", "nameSc"), ("type_secu", "typeSecu"))
 
@@ -222,22 +274,29 @@ CRITICAL_FIELDS = ("stockId", "marketType", "marketCode", "instrumentType", "sub
 ENABLE_COLUMN = "flag_enable"
 ENABLE_VALUE = "1"
 DT_UPDATE_COLUMN = "dt_update"
+#: 仅在**新建**时写入：创建时间（更新时写它会抹掉首次登记时间，见 docstring 第四节）
+DT_CREATE_COLUMN = "dt_create"
+#: 各表新建时补的常量列（全表同值；更新时不写）
+INSERT_CONSTANTS = {
+    FUTU_TABLE: {"type": "2"},      # 实测全表 18599 行恒为 '2'
+    SECU_TABLE: {},                 # secu 表其余列（timezone/provider/day_incr_max 等）留库端默认
+}
+#: secu 表关联列：新建时必须写（库端按 sid = 映射记录的 stockId 关联）
+SECU_LINK_COLUMN = "sid"
 
 # 未命中分类（写进 MisMatch 文件的「原因」段）
 MISS_INDEX = "INDEX_MISS"
 MISS_RECORD_FIELD = "RECORD_FIELD_MISSING"
 MISS_FUTU_ROW = "FUTU_ROW_MISSING"
 MISS_SECU_ROW = "SECU_ROW_MISSING"
-MISS_SECU_USC = "SECU_USC_MISMATCH"
-MISS_SECU_DUP = "SECU_ROW_DUPLICATE"
+MISS_INSERT_REQUIRED = "INSERT_REQUIRED_MISSING"
 
 MISS_REASONS = {
     MISS_INDEX: "usc 不在 UscFutuMapping.jsonl.idx 中（无映射记录，解析不出查询参数）",
     MISS_RECORD_FIELD: "映射记录缺关键字段，拼不出完整请求参数",
-    MISS_FUTU_ROW: "表 finv_quote_futu_collect 中不存在该 stockId 的行（本脚本不插行）",
-    MISS_SECU_ROW: "表 finv_quote_secu 中不存在该 sid 的行（本脚本不插行）",
-    MISS_SECU_USC: "表 finv_quote_secu 中存在该 sid，但其行的 usc 与文件名不一致，未做更新",
-    MISS_SECU_DUP: "表 finv_quote_secu 中同 sid 存在多行且 usc 匹配，已按 usc 过滤只更新该行，请复核",
+    MISS_FUTU_ROW: "表 finv_quote_futu_collect 中不存在该 stockId 的行（本轮未开启自动插入）",
+    MISS_SECU_ROW: "表 finv_quote_secu 中不存在该 usc 的行（本轮未开启自动插入）",
+    MISS_INSERT_REQUIRED: "表内缺行且映射凑不齐非空列（该表本轮不写，避免整块 upsert 失败）",
 }
 
 RETURN_OK, RETURN_FAILED, RETURN_TASK_ERROR = 0, 1, 2
@@ -430,7 +489,7 @@ class SupabaseClient:
     429/5xx 与网络类错误按指数退避重试，其余错误直接抛出。
     """
 
-    def __init__(self, projectRef, apiKey, workers=DEFAULT_CONCURRENCY, timeout=HTTP_TIMEOUT):
+    def __init__(self, projectRef, apiKey, timeout=HTTP_TIMEOUT):
         if not projectRef:
             raise TaskError("Supabase 项目引用（%s）不能为空" % ENV_SUPABASE_REF)
         if not apiKey:
@@ -438,17 +497,16 @@ class SupabaseClient:
         base = env("SUPABASE_REST_BASE") or (SUPABASE_REST_BASE % projectRef)
         self.restUrl = base.rstrip("/")
         self.apiKey = apiKey
-        self.workers = workers
         self.timeout = timeout
         self.requests = 0
 
-    def _request(self, method, table, query, body=None, prefer=None):
+    def _request(self, method, table, query, body=None, prefer=None, accept=None):
         """发一次请求（含重试），返回 (状态码, 响应文本)。"""
         url = "%s/%s" % (self.restUrl, urllib.parse.quote(table, safe=""))
         if query:
             url += "?" + query
         headers = {"apikey": self.apiKey, "Authorization": "Bearer %s" % self.apiKey,
-                   "Accept": "application/json"}
+                   "Accept": accept or "application/json"}
         if body is not None:
             headers["Content-Type"] = "application/json"
         if prefer:
@@ -494,21 +552,58 @@ class SupabaseClient:
                 result.setdefault(str(row[keyColumn]), []).append(row)
         return result
 
-    def patch(self, table, query, payload):
-        """PATCH 更新，返回受影响行数；query 必须非空（防误全表更新）。"""
-        if not query:
-            raise SupabaseRestError("PATCH 缺少过滤条件，拒绝执行（防止误全表更新）")
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        status, response = self._request("PATCH", table, query, body, prefer="return=representation")
-        if status not in (200, 204):
-            raise SupabaseRestError("PATCH %s 返回 HTTP %s：%s" % (table, status, response[:300]))
-        if not response.strip():
-            return 0
+    def requiredColumns(self, table, keyColumn):
+        """取表里「NOT NULL 且无默认值」的列（PostgREST OpenAPI 的 required − 有默认值 − 主键）。
+
+        批量 upsert 是先按下 **INSERT 分支校验约束**、再判定冲突的：只要缺一列 NOT NULL 且无默认值
+        的列，即使该行其实命中冲突、本该只走更新分支，也会直接报 23502（实测 finv_quote_secu 的
+        region / market 就是这样）。所以带上这些列是 upsert 的硬性前提，更新分支也一样带，
+        取值用库中现值原样回写（等价于不动该列）。
+
+        取不到 schema（权限/网络/表未暴露）时返回空集：交给库端约束兜底，失败按块记录在册。
+        """
         try:
-            rows = json.loads(response)
-        except ValueError:
-            return 0
-        return len(rows) if isinstance(rows, list) else 0
+            status, body = self._request("GET", "", None, accept="application/openapi+json")
+            spec = json.loads(body)
+            definition = (spec.get("definitions") or {}).get(table) or {}
+            properties = definition.get("properties") or {}
+        except (SupabaseRestError, ValueError, AttributeError) as exc:
+            print("  [告警] 读取 %s 的 schema 失败（%s），NOT NULL 补列跳过" % (table, exc), flush=True)
+            return set()
+        columns = set()
+        for name in definition.get("required") or []:
+            if name == keyColumn:
+                continue                      # 主键由写请求自己带上
+            if name in properties and properties[name].get("default") is None:
+                columns.add(name)
+        return columns
+
+    def upsert(self, table, rows, conflictColumn):
+        """批量 upsert（POST + Prefer: resolution=merge-duplicates），返回 (写入行, 失败块)。
+
+        有则按主键更新、无则新建，两者是同一条语句的两个分支。分块提交（WRITE_CHUNK 行/请求），
+        单条 SQL 即一个事务：某块失败只丢该块（记入失败列表后继续下一块），不会影响其它块。
+        """
+        written, failed = [], []
+        for start in range(0, len(rows), WRITE_CHUNK):
+            chunk = rows[start:start + WRITE_CHUNK]
+            keys = [cell(row.get(conflictColumn)) for row in chunk]
+            body = json.dumps(chunk, ensure_ascii=False).encode("utf-8")
+            query = "on_conflict=%s" % urllib.parse.quote(conflictColumn, safe="")
+            try:
+                status, response = self._request(
+                    "POST", table, query, body,
+                    prefer="resolution=merge-duplicates,return=representation")
+                if status not in (200, 201, 204):
+                    raise SupabaseRestError("POST 返回 HTTP %s：%s" % (status, response[:300]))
+                back = json.loads(response) if response.strip() else []
+                if not isinstance(back, list):
+                    raise SupabaseRestError("响应不是行数组")
+            except (SupabaseRestError, ValueError) as exc:
+                failed.append((keys, str(exc)))
+                continue
+            written.extend(row for row in back if isinstance(row, dict))
+        return written, failed
 
 
 # ---------------------------------------------------------------------------
@@ -655,26 +750,31 @@ def localSuccessFiles(root):
 # ---------------------------------------------------------------------------
 
 
-def loadCurrentState(client, records):
-    """批量取两张表的现状行，返回 ({stockId: [行]}, {sid: [行]})。
+def loadCurrentState(client, records, required):
+    """批量取两张表的现状行，返回 ({stockId: [行]}, {usc: [行]})。
 
-    只取需要的列：futu_collect 取主键 + 待更新字段 + flag_enable；
-    secu 额外取 usc（用于判定 sid 关联到的行是不是同一只证券）。
+    键一律用**各自的主键**：futu 表 stockId、secu 表 usc —— upsert 的冲突判定也走同一对主键，
+    读与写的口径因此完全一致。多取的列只用于校验与日志，其中 required（NOT NULL 且无默认值）
+    必须读回来，更新分支要把它们的现值一并写回去（见 SupabaseClient.requiredColumns）。
     """
-    futuColumns = [FUTU_KEY] + [column for column, _ in FUTU_FIELDS] + [ENABLE_COLUMN]
-    secuColumns = [SECU_KEY, "usc"] + [column for column, _ in SECU_FIELDS] + [ENABLE_COLUMN]
-    ids = [cell(record.get(FUTU_KEY)) for record in records]
-    futuRows = client.selectByKeys(FUTU_TABLE, FUTU_KEY, ids, futuColumns)
-    secuRows = client.selectByKeys(SECU_TABLE, SECU_KEY, ids, secuColumns)
+    futuColumns = [FUTU_KEY, DT_UPDATE_COLUMN] + [column for column, _ in FUTU_FIELDS] + [ENABLE_COLUMN]
+    secuColumns = [SECU_KEY, SECU_LINK_COLUMN, DT_UPDATE_COLUMN] \
+        + [column for column, _ in SECU_FIELDS] + [ENABLE_COLUMN]
+    futuColumns += sorted(required.get(FUTU_TABLE, ()))
+    secuColumns += sorted(required.get(SECU_TABLE, ()))
+    futuKeys = [cell(record.get(FUTU_KEY)) for record in records]
+    secuKeys = [cell(record.get(SECU_KEY)) for record in records]
+    futuRows = client.selectByKeys(FUTU_TABLE, FUTU_KEY, futuKeys, list(dict.fromkeys(futuColumns)))
+    secuRows = client.selectByKeys(SECU_TABLE, SECU_KEY, secuKeys, list(dict.fromkeys(secuColumns)))
     return futuRows, secuRows
 
 
 def buildPayload(spec, record, current, stamp):
-    """算出某张表要写的字段。
+    """算出某张表要写的字段（不含主键、不含 dt_create）。
 
     :param spec: {"table", "key", "fields"} —— 更新规则。
     :param record: 映射记录。
-    :param current: 库中现状行。
+    :param current: 库中现状行；**本次要新建的行传 {}**（所有有值的字段都会进 payload）。
     :param stamp: dt_update 取值。
     :return: (payload, changed, unchanged, skipped)
         payload 为空字典 = 无需变更；changed/unchanged/skipped 仅用于日志。
@@ -697,62 +797,140 @@ def buildPayload(spec, record, current, stamp):
     if payload:
         # dt_update 只在确有变更时盖章：无变更的行走不到这里（见 docstring 第四节 ③）
         payload[DT_UPDATE_COLUMN] = stamp
+        changed.append((DT_UPDATE_COLUMN, "(本次时间戳)", cell(current.get(DT_UPDATE_COLUMN)), stamp))
     return payload, changed, unchanged, skipped
 
 
-def futuFilter(stockId):
-    """futu_collect 表的过滤条件：主键 stockId。"""
-    return "%s=eq.%s" % (FUTU_KEY, stockId)
+def upsertSql(table, keyColumn, rows):
+    """渲染批量 upsert 的等价 SQL（dry-run 打印 + 日志追溯两用）。
+
+    行数多时只展开首行：全量展开在日志里没有可读性，而 upsert 的语义就是「同一形状的 N 行」。
+    """
+    if not rows:
+        return ""
+    columns = [keyColumn] + [name for name in rows[0] if name != keyColumn]
+    tuples = []
+    for row in rows[:1]:
+        tuples.append("(%s)" % ", ".join(sqlLiteral(row.get(name)) for name in columns))
+    if len(rows) > 1:
+        tuples.append("(…共 %d 行…)" % len(rows))
+    sets = ", ".join("%s = EXCLUDED.%s" % (name, name) for name in columns if name != keyColumn)
+    return ("INSERT INTO %s (%s) VALUES %s ON CONFLICT (%s) DO UPDATE SET %s;"
+            % (table, ", ".join(columns), ", ".join(tuples), keyColumn, sets))
 
 
-def secuFilter(record, stockId):
-    """secu 表的过滤条件：sid 关联 + usc 兜底（防止同 sid 的多行证券被连带改写）。"""
-    return "%s=eq.%s&usc=eq.%s" % (SECU_KEY, stockId,
-                                   urllib.parse.quote(cell(record.get("usc")), safe=""))
+def planRow(record, futuRows, secuRows, stamp, allowInsert, required):
+    """算出一条证券对两张表的写计划。
 
-
-def dryRunSql(table, filterExpr, payload, note):
-    """渲染将要执行的 UPDATE（dry-run 打印 + 日志追溯两用）。"""
-    sets = ", ".join("%s = %s" % (key, sqlLiteral(value)) for key, value in payload.items())
-    return "UPDATE %s SET %s WHERE %s;  -- %s" % (table, sets, filterExpr, note)
-
-
-def planRow(record, futuRows, secuRows, stamp):
-    """算出一条证券的完整更新计划（两张表）。
-
-    :return: (plans, misses)
-        plans = [{"table","filter","payload","changed","unchanged","skipped"}]；
-        misses = 未命中分类码列表（该表不写，其余表照常写）。
+    :param required: {表名: {NOT NULL 且无默认值的列}}，见 SupabaseClient.requiredColumns。
+    :return: (plans, misses, warns)
+        plans  = [{"table","key","keyValue","payload","changed","unchanged","skipped","fill","insert"}]
+                 payload 为空 = 无需变更（不入批）；insert = 该行表里没有，走新建分支；
+        misses = 未命中分类码列表（该表不写，其余表照常写）；
+        warns  = 可疑但不阻塞的告警（如 secu 行的 sid 与映射记录不一致）。
     """
     stockId = cell(record.get(FUTU_KEY))
-    plans, misses = [], []
+    usc = cell(record.get(SECU_KEY))
+    plans, misses, warns = [], [], []
 
-    futuSpec = {"table": FUTU_TABLE, "key": FUTU_KEY, "fields": FUTU_FIELDS}
-    futuList = futuRows.get(stockId) or []
-    if not futuList:
-        misses.append(MISS_FUTU_ROW)
-    else:
-        if len(futuList) > 1:
-            print("      ! %s 中 stockId=%s 出现 %d 行（主键重复），只按第一行计算差异"
-                  % (FUTU_TABLE, stockId, len(futuList)), flush=True)
-        payload, changed, unchanged, skipped = buildPayload(futuSpec, record, futuList[0], stamp)
-        plans.append({"table": FUTU_TABLE, "filter": futuFilter(stockId), "payload": payload,
-                      "changed": changed, "unchanged": unchanged, "skipped": skipped})
+    for spec in ({"table": FUTU_TABLE, "key": FUTU_KEY, "fields": FUTU_FIELDS,
+                  "keyValue": stockId, "current": futuRows},
+                 {"table": SECU_TABLE, "key": SECU_KEY, "fields": SECU_FIELDS,
+                  "keyValue": usc, "current": secuRows}):
+        table, key, keyValue = spec["table"], spec["key"], spec["keyValue"]
+        rows = spec["current"].get(keyValue) or []
+        if not rows and not allowInsert:
+            misses.append(MISS_FUTU_ROW if table == FUTU_TABLE else MISS_SECU_ROW)
+            continue
+        if len(rows) > 1:
+            warns.append("%s 中 %s=%s 出现 %d 行（主键重复，库端约束异常），按第一行算差异"
+                         % (table, key, keyValue, len(rows)))
+        current = rows[0] if rows else {}
+        if table == SECU_TABLE and rows and cell(current.get(SECU_LINK_COLUMN)) != stockId:
+            # usc 是主键，按它写不会改错行；sid 不一致只是可疑，提醒人工复核
+            warns.append("%s 中 usc=%s 的 %s=%s，与映射记录的 stockId=%s 不一致（仍按 usc 更新）"
+                         % (table, usc, SECU_LINK_COLUMN,
+                            cell(current.get(SECU_LINK_COLUMN)) or "(空)", stockId))
+        payload, changed, unchanged, skipped = buildPayload(spec, record, current, stamp)
+        fill = []
+        if payload and rows:
+            # upsert 的 INSERT 分支要求这些列在场：按库中现值原样回写（值不变，只是让约束通过）
+            for column in sorted(required.get(table, ())):
+                if column in payload or not cell(current.get(column)):
+                    continue
+                payload[column] = cell(current.get(column))
+                fill.append((column, cell(current.get(column))))
+        if not rows:
+            # 新建：补齐关联列与常量列，再校验 NOT NULL 是否都凑得齐
+            if table == SECU_TABLE:
+                payload[SECU_LINK_COLUMN] = stockId
+                changed.append((SECU_LINK_COLUMN, "(新建补值)", "", stockId))
+            payload[DT_CREATE_COLUMN] = stamp
+            changed.append((DT_CREATE_COLUMN, "(新建补值)", "", stamp))
+            for column, value in sorted(INSERT_CONSTANTS.get(table, {}).items()):
+                payload[column] = value
+                changed.append((column, "(固定值)", "", value))
+            lack = sorted(column for column in required.get(table, ())
+                          if column not in payload or not cell(payload.get(column)))
+            if lack:
+                # 凑不齐就得整块 upsert 失败（23502），不如按条留痕
+                misses.append("%s:%s" % (MISS_INSERT_REQUIRED, "、".join(lack)))
+                continue
+        plans.append({"table": table, "key": key, "keyValue": keyValue, "usc": usc,
+                      "payload": payload, "changed": changed, "unchanged": unchanged,
+                      "skipped": skipped, "fill": fill, "insert": not rows, "current": current})
+    return plans, misses, warns
 
-    secuSpec = {"table": SECU_TABLE, "key": SECU_KEY, "fields": SECU_FIELDS}
-    secuList = secuRows.get(stockId) or []
-    matched = [row for row in secuList if cell(row.get("usc")) == cell(record.get("usc"))]
-    if not secuList:
-        misses.append(MISS_SECU_ROW)
-    elif not matched:
-        misses.append(MISS_SECU_USC)
-    else:
-        if len(matched) > 1:
-            misses.append(MISS_SECU_DUP)
-        payload, changed, unchanged, skipped = buildPayload(secuSpec, record, matched[0], stamp)
-        plans.append({"table": SECU_TABLE, "filter": secuFilter(record, stockId), "payload": payload,
-                      "changed": changed, "unchanged": unchanged, "skipped": skipped})
-    return plans, misses
+
+def buildBatches(rowPlans):
+    """把逐行计划汇总成「每表两批」的写入批次。
+
+    :param rowPlans: [(usc, record, plans), ...]
+    :return: [{"table","conflict","updates":[行,…],"inserts":[行,…],"uscOf":{主键: usc}}]
+        已在册的行进 updates，缺行的行进 inserts（新建要补的常量列已在 planRow 里补齐）。
+
+    ⚠️ PostgREST 的批量 body 要求**每行的键完全一致**，否则整条请求 400（PGRST102
+    "All object keys must match" —— 实测）。而各行的变更字段本就各不相同（A 行改了行情市场、
+    B 行没改），故同一个批次内按各行 payload 的**并集**补列：更新批补库中现值（值不变），
+    新建批补 null（该列此时必为可空 —— 非空列凑不齐的行已在 planRow 里转留痕；代价是这些列
+    拿不到库端默认值，故开启插入时务必复核新增行）。补列只改 body 形状，不改真实取值。
+    """
+    batches = {}
+    for usc, _record, plans in rowPlans:
+        for plan in plans:
+            if not plan["payload"]:
+                continue                        # 已完全一致：不入批，连 dt_update 也不动
+            batch = batches.setdefault(plan["table"], {"table": plan["table"],
+                                                       "conflict": plan["key"],
+                                                       "updates": [], "inserts": [],
+                                                       "uscOf": {}})
+            batch["inserts" if plan["insert"] else "updates"].append(plan)
+            batch["uscOf"][plan["keyValue"]] = usc
+    result = []
+    for table in (FUTU_TABLE, SECU_TABLE):
+        batch = batches.get(table)
+        if not batch:
+            continue
+        for bucket in ("updates", "inserts"):
+            entries = batch[bucket]
+            columns = []
+            for plan in entries:
+                columns += [name for name in plan["payload"] if name not in columns]
+            rows = []
+            for plan in entries:
+                row = {}
+                for name in columns:
+                    if name in plan["payload"]:
+                        row[name] = plan["payload"][name]
+                    elif plan["insert"]:
+                        row[name] = None
+                    else:
+                        row[name] = plan["current"].get(name)
+                row[batch["conflict"]] = plan["keyValue"]
+                rows.append(row)
+            batch[bucket] = rows
+        result.append(batch)
+    return result
 
 
 def mismatchText(usc, record, source, misses, nowText):
@@ -783,9 +961,11 @@ def mismatchText(usc, record, source, misses, nowText):
     lines += [
         "",
         "## 处理建议",
-        "- 本脚本只更新既有记录，不会向 finv_quote_futu_collect / finv_quote_secu 插入新行。",
-        "- 若该证券应纳入采集配置，请先补建对应行（前者按 stockId，后者按 sid 且 usc 一致）后重跑",
-        "  本步骤；补建后本文件保留作历史留痕即可。",
+        "- 表内缺行时本脚本默认**只留痕不新建**（INPUT_SYNC_ALLOW_INSERT 未开启）：可先补建对应行",
+        "  再重跑本步骤，或把工作流里的 INPUT_SYNC_ALLOW_INSERT 置 1，由脚本自行新建",
+        "  （新建的行会在运行摘要与步骤日志里单独列出，务必人工复核）。",
+        "- 补建口径：futu 表按 stockId；secu 表按 usc，且 sid 需等于上面解析出的 stockId。",
+        "- 补建后本文件保留作历史留痕即可。",
         "",
     ]
     return "\n".join(lines)
@@ -840,7 +1020,7 @@ def resolveTargets(batchUscs, successUscs, batchSize, sampleLimit):
     return kept + sampled, dropped, sampled
 
 
-def logPlan(position, total, usc, record, source, plans, misses, dryRun):
+def logPlan(position, total, usc, record, source, plans, misses, warns):
     """打印一条证券的完整计划日志（字段级，便于排查）。"""
     print("[%d/%d] usc=%s  quoteMarket=%s  stockId=%s"
           % (position, total, usc, cell(record.get("quoteMarket")), cell(record.get(FUTU_KEY))),
@@ -851,51 +1031,66 @@ def logPlan(position, total, usc, record, source, plans, misses, dryRun):
     for plan in plans:
         table = plan["table"]
         if not plan["payload"]:
-            print("      · %s：无需变更（%s）" % (table, "；".join(plan["unchanged"]) or "无字段"),
-                  flush=True)
+            print("      · %s：已在册且 %s"
+                  % (table, "；".join(plan["unchanged"]) or "无需变更"), flush=True)
             continue
-        print("      · %s 待更新 %d 个字段：" % (table, len(plan["payload"])), flush=True)
+        print("      · %s 待%s %d 个字段（并入本表批量 upsert）："
+              % (table, "新建（表内无此行）" if plan["insert"] else "更新", len(plan["payload"])),
+              flush=True)
         for column, sourceField, have, want in plan["changed"]:
             print("          ↑ %-18s %s → %s   (%s ← %s)"
                   % (column, shown(have), sqlLiteral(want), column, sourceField), flush=True)
         if plan["unchanged"]:
             print("          = 保持 : %s" % "；".join(plan["unchanged"]), flush=True)
+        if plan["fill"]:
+            print("          = 补列 : %s（NOT NULL 且无默认值，按库中现值回写，值不变）"
+                  % "；".join("%s=%s" % (column, sqlLiteral(value))
+                             for column, value in plan["fill"]), flush=True)
         for column, sourceField, have in plan["skipped"]:
             print("          ! 跳过 : %s（映射缺 %s，保留库中现值 %s）"
                   % (column, sourceField, shown(have)), flush=True)
-        if dryRun:
-            print("          SQL : %s"
-                  % dryRunSql(table, plan["filter"], plan["payload"], "usc=%s" % usc), flush=True)
+    for warn in warns:
+        print("      ⚠ 告警：%s" % warn, flush=True)
     if misses:
         print("      ⚠ 未命中：%s（将留痕 %s/%s.txt）"
               % ("、".join(misses), MISMATCH_DIR, usc), flush=True)
 
 
-def applyPlans(client, tasks):
-    """并发提交写请求，返回 (成功列表, 失败列表)；失败项为 (usc, 表名, 原因)。"""
-    done, failed = [], []
-    if not tasks:
-        return done, failed
-    with concurrent.futures.ThreadPoolExecutor(max_workers=client.workers) as pool:
-        futures = {pool.submit(client.patch, plan["table"], plan["filter"], plan["payload"]): (usc, plan)
-                   for usc, plan in tasks}
-        for future in concurrent.futures.as_completed(futures):
-            usc, plan = futures[future]
-            try:
-                affected = future.result()
-                if affected == 1:
-                    done.append((usc, plan))
-                    print("      ⤷ 写入 %-26s %-46s HTTP 200 命中 1 行（%d 字段）"
-                          % (plan["table"], plan["filter"], len(plan["payload"])), flush=True)
-                else:
-                    failed.append((usc, plan["table"], "命中 %d 行（预期 1 行）" % affected))
-                    print("      ✗ 写入 %-26s %-46s 命中 %d 行（预期 1 行）"
-                          % (plan["table"], plan["filter"], affected), flush=True)
-            except SupabaseRestError as exc:
-                failed.append((usc, plan["table"], str(exc)))
-                print("      ✗ 写入 %-26s %-46s 失败：%s"
-                      % (plan["table"], plan["filter"], exc), flush=True)
-    return done, failed
+def briefKeys(keys, limit=6):
+    """把主键列表折成一行短串（日志用）。"""
+    head = "、".join(cell(key) for key in keys[:limit])
+    return head + ("…（共 %d）" % len(keys) if len(keys) > limit else "")
+
+
+def applyBatches(client, batches):
+    """按表提交批量 upsert，返回 (已写行, 新建行, 失败项)。
+
+    每张表两条语句：在册行 → UPDATE 分支（不含 dt_create），缺行 → INSERT 分支（补 dt_create）。
+    失败项 = (表名, 动作, 主键列表, 原因)；一条语句即一个事务，失败以块为单位。
+    """
+    written, inserted, failed = [], [], []
+    for batch in batches:
+        for bucket, action in (("updates", "更新"), ("inserts", "新建")):
+            rows = batch[bucket]
+            if not rows:
+                continue
+            table, conflict = batch["table"], batch["conflict"]
+            keys = [row[conflict] for row in rows]
+            back, blocks = client.upsert(table, rows, conflict)
+            if blocks:
+                for badKeys, reason in blocks:
+                    failed.append((table, action, badKeys, reason))
+                    print("      ✗ %s %s %d 行失败：%s（块内 %s）"
+                          % (table, action, len(badKeys), reason, briefKeys(badKeys)), flush=True)
+            if back:
+                written.extend(cell(row.get(conflict)) for row in back)
+                if bucket == "inserts":
+                    inserted.extend(cell(row.get(conflict)) for row in back)
+            done = len(keys) - sum(len(badKeys) for badKeys, _ in blocks)
+            if done:
+                print("      ⤷ %s %s %d 行 → HTTP 2xx，回读 %d 行（%s）"
+                      % (table, action, done, len(back), briefKeys(keys)), flush=True)
+    return written, inserted, failed
 
 
 def archiveMismatch(repoAccess, usc, record, source, misses, outDir, dryRun, failures):
@@ -938,14 +1133,23 @@ def stepSummary(stats, branch, dryRun, probability, batchSize, sampleLimit):
             "| 目标条数 | %d | 本批 %d + 补齐 %d |"
             % (stats["total"], stats["batchCount"], stats["sampleCount"]),
             "| %s | %d | %s |" % ("计划写入" if dryRun else "写库成功", stats["written"],
-                                   "dry-run 未执行" if dryRun else "行级写请求命中 1 行"),
+                                   "dry-run 未执行" if dryRun else "批量 upsert 回读行数"),
+            "| ⤷ 其中新建 | %d | 表内原无此行（已补 dt_create；须人工复核） |" % stats["inserted"],
             "| 写库失败 | %d | 见步骤日志中的 ✗ 行 |" % stats["failed"],
-            "| 无需变更 | %d | 表级：两表均已一致，未发写请求 |" % stats["skippedRows"],
+            "| 无需变更 | %d | 行×表：该表该行已完全一致，不入批 |" % stats["skippedRows"],
+            "| 告警 | %d | 不阻塞：如 sid 与 usc 不符、主键重复 |" % len(stats["warns"]),
             "| 未命中留痕 | %d | Verify/MisMatch/{usc}.txt |" % stats["mismatched"],
             "| ⤷ 映射无记录 | %d | usc 不在 UscFutuMapping.jsonl.idx 中 |" % stats["indexMiss"],
             "| ⤷ 映射缺关键字段 | %d | 记录缺 stockId/市场/类型，拼不出请求参数 |" % stats["recordMiss"],
+            "| ⤷ 表内缺行 | %d | 本轮未开启自动插入，只留痕 |" % stats["rowMiss"],
+            "| ⤷ 新建凑不齐非空列 | %d | 映射缺值时无法新建，避免整块 upsert 失败 |" % stats["insertMiss"],
             "| 请求总数 | %d | 含读现状与重试 |" % stats["requests"],
         ]
+        if stats["inserted"]:
+            lines += ["", "> 本次新建行（表内原无，已补 dt_create，须人工复核）：%s"
+                      % "、".join(stats["insertedKeys"][:50])]
+        if stats["warns"]:
+            lines += ["", "> 告警（不阻塞，供人工复核）："] + ["- %s" % item for item in stats["warns"][:20]]
         if stats["dropped"]:
             lines += ["", "> 本批被剔除（不在 Verify/Success/ 下，采集未成功）：%s"
                       % "、".join(stats["dropped"])]
@@ -963,7 +1167,7 @@ def main():
     probability = envInt("INPUT_SYNC_PROBABILITY", DEFAULT_PROBABILITY, minimum=0, maximum=100)
     batchSize = envInt("INPUT_SYNC_BATCH_SIZE", DEFAULT_BATCH_SIZE, minimum=0)
     sampleLimit = envInt("INPUT_SYNC_SAMPLE_LIMIT", DEFAULT_SAMPLE_LIMIT, minimum=0)
-    workers = envInt("INPUT_SYNC_CONCURRENCY", DEFAULT_CONCURRENCY, minimum=1, maximum=32)
+    allowInsert = envFlag("INPUT_SYNC_ALLOW_INSERT", DEFAULT_ALLOW_INSERT)
     dryRun = envFlag("INPUT_SYNC_DRY_RUN")
     watchlist = env("INPUT_WATCHLIST", os.path.join(SCRIPT_DIR, "VerifyQuoteMinuteWatchlist.txt"))
 
@@ -971,13 +1175,16 @@ def main():
     print("任务脚本   %s（版本 %s）" % (SCRIPT_NAME, TASK_VERSION), flush=True)
     print("目标分支   %s%s" % (branch, "（dry-run：只打印 SQL，不写库不提交）" if dryRun else ""),
           flush=True)
-    print("抽样参数   概率闸门 %d%%｜批量上限 %d｜头部补齐上限 %d｜并发 %d"
-          % (probability, batchSize, sampleLimit, workers), flush=True)
+    print("抽样参数   概率闸门 %d%%｜批量上限 %d｜头部补齐上限 %d｜表内缺行 %s"
+          % (probability, batchSize, sampleLimit, "允许新建" if allowInsert else "只留痕"),
+          flush=True)
     print("=" * 78, flush=True)
 
     stats = {"gated": False, "total": 0, "batchCount": 0, "sampleCount": 0, "written": 0,
-             "skippedRows": 0, "failed": 0, "mismatched": 0, "indexMiss": 0, "recordMiss": 0,
-             "requests": 0, "dropped": [], "failures": []}
+             "inserted": 0, "insertedKeys": [], "skippedRows": 0, "failed": 0, "mismatched": 0,
+             "indexMiss": 0, "recordMiss": 0, "rowMiss": 0, "insertMiss": 0, "warns": [],
+             "requests": 0,
+             "dropped": [], "failures": []}
 
     # ① 概率闸门：未命中则本轮什么都不做
     roll = random.random() * 100.0
@@ -1061,46 +1268,76 @@ def main():
                             outDir, dryRun, stats["failures"])
 
     # ⑤ 读现状（凭据与映射表同属任务级前置条件，缺了就退出 2）
-    client = SupabaseClient(env(ENV_SUPABASE_REF), env(ENV_SUPABASE_KEY), workers=workers)
+    client = SupabaseClient(env(ENV_SUPABASE_REF), env(ENV_SUPABASE_KEY))
     futuRows, secuRows = {}, {}
+    required = {}
     if records:
+        required = {FUTU_TABLE: client.requiredColumns(FUTU_TABLE, FUTU_KEY),
+                    SECU_TABLE: client.requiredColumns(SECU_TABLE, SECU_KEY)}
+        print("非空列约束 %s：%s｜%s：%s（upsert 的各分支都必须带上）"
+              % (FUTU_TABLE, "、".join(sorted(required[FUTU_TABLE])) or "无",
+                 SECU_TABLE, "、".join(sorted(required[SECU_TABLE])) or "无"), flush=True)
         try:
-            futuRows, secuRows = loadCurrentState(client, records)
+            futuRows, secuRows = loadCurrentState(client, records, required)
         except SupabaseRestError as exc:
             raise TaskError("读取两张表现状失败：%s" % exc)
-        print("现状读取   %s 命中 %d 个 stockId｜%s 命中 %d 个 sid（请求 %d 次）"
-              % (FUTU_TABLE, len(futuRows), SECU_TABLE, len(secuRows), client.requests), flush=True)
+        print("现状读取   %s 命中 %d 个 %s｜%s 命中 %d 个 %s（请求 %d 次）"
+              % (FUTU_TABLE, len(futuRows), FUTU_KEY, SECU_TABLE, len(secuRows), SECU_KEY,
+                 client.requests), flush=True)
 
-    # ⑥ 逐条算差异并打印字段级日志
+    # ⑥ 逐条算差异并打印字段级日志（不写库，先出计划）
     stamp = nowUtcIso()
     print("时间戳     dt_update = %s（两张表同值）" % stamp, flush=True)
-    writeTasks, pendingMismatch = [], []
+    rowPlans, pendingMismatch = [], []
     for position, record in enumerate(records, start=1):
-        usc = cell(record.get("usc"))
-        plans, misses = planRow(record, futuRows, secuRows, stamp)
-        logPlan(position, len(records), usc, record, sourceOf.get(usc, ""), plans, misses, dryRun)
+        usc = cell(record.get(SECU_KEY))
+        plans, misses, warns = planRow(record, futuRows, secuRows, stamp, allowInsert, required)
+        logPlan(position, len(records), usc, record, sourceOf.get(usc, ""), plans, misses, warns)
+        rowPlans.append((usc, record, plans))
+        stats["warns"] += ["usc=%s：%s" % (usc, warn) for warn in warns]
         if misses:
             pendingMismatch.append((usc, record, misses))
         for plan in plans:
             if plan["payload"]:
-                writeTasks.append((usc, plan))
+                if plan["insert"]:
+                    print("      ＋ %s 表内原无 %s=%s，本行将走新建分支"
+                          % (plan["table"], plan["key"], plan["keyValue"]), flush=True)
             else:
                 stats["skippedRows"] += 1
 
-    # ⑦ 写库（只对确有差异的行发写请求）
+    # ⑦ 写库：每张表两条 upsert 语句（在册行更新 / 缺行新建），无差异的行不入批
+    batches = buildBatches(rowPlans)
+    updRows = sum(len(batch["updates"]) for batch in batches)
+    insRows = sum(len(batch["inserts"]) for batch in batches)
     print("-" * 78, flush=True)
-    print("写库计划   %d 个待写请求｜%d 张表无需变更"
-          % (len(writeTasks), stats["skippedRows"]), flush=True)
+    print("写库计划   %d 张表｜更新 %d 行｜新建 %d 行｜无需变更 %d 项（行×表，两表均已一致）"
+          % (len(batches), updRows, insRows, stats["skippedRows"]), flush=True)
+    for batch in batches:
+        for bucket, action in (("updates", "更新"), ("inserts", "新建")):
+            if batch[bucket]:
+                print("  · %s %s %d 行、%d 列（on_conflict=%s）"
+                      % (batch["table"], action, len(batch[bucket]),
+                         len(batch[bucket][0]), batch["conflict"]), flush=True)
+        if dryRun:
+            for bucket in ("updates", "inserts"):
+                if batch[bucket]:
+                    print("  [dry-run] %s" % upsertSql(batch["table"], batch["conflict"],
+                                                      batch[bucket]), flush=True)
     if dryRun:
-        print("dry-run    以上 SQL 已打印，未连接写接口。", flush=True)
-        stats["written"] = len(writeTasks)
+        print("dry-run    以上为等价 SQL（首行展开），未连接写接口。", flush=True)
+        stats["written"] = updRows + insRows
+        stats["inserted"] = insRows
         failed = []
     else:
-        done, failed = applyPlans(client, writeTasks)
-        stats["written"] = len(done)
-    stats["failed"] = len(failed)
+        written, inserted, failed = applyBatches(client, batches)
+        stats["written"], stats["inserted"] = len(written), len(inserted)
+        stats["insertedKeys"] = sorted(set(inserted))
+        if stats["insertedKeys"]:
+            print("新增行     %d 行：%s" % (len(stats["insertedKeys"]),
+                                          "、".join(stats["insertedKeys"])), flush=True)
+    stats["failed"] = sum(len(keys) for _table, _action, keys, _reason in failed)
 
-    # ⑧ 未命中留痕（表内缺行 / sid 与 usc 不符等情况）
+    # ⑧ 未命中留痕（表内缺行 / 映射不可用等情况）
     if pendingMismatch:
         print("-" * 78, flush=True)
         print("未命中留痕 %d 条 → %s/{usc}.txt" % (len(pendingMismatch), MISMATCH_DIR), flush=True)
@@ -1108,17 +1345,24 @@ def main():
             archiveMismatch(repoAccess, usc, record, sourceOf.get(usc, ""), misses,
                             outDir, dryRun, stats["failures"])
     stats["mismatched"] = len(pendingMismatch) + len(earlyMismatch)
+    stats["rowMiss"] = sum(1 for _usc, _record, misses in pendingMismatch
+                           if MISS_FUTU_ROW in misses or MISS_SECU_ROW in misses)
+    stats["insertMiss"] = sum(1 for _usc, _record, misses in pendingMismatch
+                              if any(str(code).startswith(MISS_INSERT_REQUIRED)
+                                     for code in misses))
 
     # ⑨ 汇总
     stats["requests"] = client.requests
-    stats["failures"] = [("%s 写入 %s 失败" % (usc, table), reason) for usc, table, reason in failed] \
-        + list(stats["failures"])
+    stats["failures"] = [("%s %s %d 行失败" % (table, action, len(keys)), reason)
+                         for table, action, keys, reason in failed] + list(stats["failures"])
     print("=" * 78, flush=True)
-    print("本轮结束：目标 %d，%s %d，写库失败 %d，无需变更 %d 张表，未命中留痕 %d"
-          "（其中映射无记录 %d、映射缺字段 %d），请求 %d 次"
+    print("本轮结束：目标 %d，%s %d 行（其中新建 %d 行），写库失败 %d 行，无需变更 %d 项，"
+          "未命中留痕 %d（其中映射无记录 %d、映射缺字段 %d、表内缺行 %d、新建缺列 %d），"
+          "告警 %d，请求 %d 次"
           % (stats["total"], "计划写入（dry-run 未执行）" if dryRun else "写库成功",
-             stats["written"], stats["failed"], stats["skippedRows"], stats["mismatched"],
-             stats["indexMiss"], stats["recordMiss"], client.requests), flush=True)
+             stats["written"], stats["inserted"], stats["failed"], stats["skippedRows"],
+             stats["mismatched"], stats["indexMiss"], stats["recordMiss"], stats["rowMiss"],
+             stats["insertMiss"], len(stats["warns"]), client.requests), flush=True)
     for item, reason in stats["failures"][:20]:
         print("  ✗ %s：%s" % (item, reason), flush=True)
     stepSummary(stats, branch, dryRun, probability, batchSize, sampleLimit)
@@ -1126,6 +1370,8 @@ def main():
     if stats["failures"]:
         annotate("有 %d 项写库/提交失败，详见步骤日志与运行摘要" % len(stats["failures"]), "error")
         return RETURN_FAILED
+    if stats["inserted"]:
+        annotate("本轮新建了 %d 行（表内原无），请人工复核" % stats["inserted"], "warning")
     if stats["mismatched"]:
         annotate("有 %d 条记录未命中，已留痕到 %s/" % (stats["mismatched"], MISMATCH_DIR), "warning")
     return RETURN_OK

@@ -154,8 +154,9 @@ jobs:
           # 单轮目标数上限 / 从 Success 清单头部补齐的条数上限（本批 3 条时即 3 + 47 = 50）
           INPUT_SYNC_BATCH_SIZE: '50'
           INPUT_SYNC_SAMPLE_LIMIT: '47'
-          # 写库并发线程数（同时在途的写请求数）
-          INPUT_SYNC_CONCURRENCY: '6'
+          # 表里缺行时是否允许新建：默认关闭 —— 缺行的证券只写 Verify/MisMatch/{usc}.txt 留痕，
+          # 由人工决定是否补录（脚本会把插入的行单独列出，开启后务必复核运行摘要）
+          INPUT_SYNC_ALLOW_INSERT: '0'
           # 只打印待执行 SQL：dry_run 触发时自动继承，避免「只本地生成、不提交仓库」的演练
           # 反而真的改动线上配置表
           INPUT_SYNC_DRY_RUN: ${{ inputs.dry_run || inputs.sync_dry_run }}
