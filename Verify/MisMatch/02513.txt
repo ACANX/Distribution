@@ -1,0 +1,30 @@
+# VerifyQuoteMinute 配置同步：未命中记录
+
+usc        : 02513
+stockId    : 87836376173009
+来源文件   : Verify/Success/HK/02513.mvsv
+检测时刻   : 2026-09-23 15:48:53 (+08:00)
+任务脚本   : VerifyQuoteMinuteSyncConfig.py（版本 1）
+工作流运行 : (本地运行)
+
+## 未命中的表 / 原因
+- [FUTU_ROW_MISSING] 表 finv_quote_futu_collect 中不存在该 stockId 的行（本轮未开启自动插入）
+
+## 映射表解析出的查询参数
+stockId            = 87836376173009
+typeSymbol         = stock
+quoteMarket        = HK
+futuSymbol         = 02513
+marketType         = 1
+marketCode         = 1
+instrumentType     = 3
+subInstrumentType  = 3002
+nameSc             = 智谱
+typeSecu           = Stock
+secuRegion         = HK
+secuMarket         = HK
+
+## 处理建议
+- 本脚本只更新既有记录，不会向 finv_quote_futu_collect / finv_quote_secu 插入新行。
+- 若该证券应纳入采集配置，请先补建对应行（前者按 stockId，后者按 sid 且 usc 一致）后重跑
+  本步骤；补建后本文件保留作历史留痕即可。
