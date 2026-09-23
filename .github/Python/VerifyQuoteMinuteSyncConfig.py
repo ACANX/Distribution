@@ -79,7 +79,7 @@ instrumentType / subInstrumentType / typeSecu / secuRegion / secuMarket），且
 --------------------------------------------------------------------------------
 两张表都以 stockId 关联（取值即映射记录的 stockId）：
 
-    finv_quote_futu_collect   主键 stockId     —— 富途采集配置表
+    finv_quote_collect_futu   主键 usc     —— 富途采集配置表
         quote_market       ← quoteMarket
         type_symbol        ← typeSymbol
         futu_symbol        ← futuSymbol
