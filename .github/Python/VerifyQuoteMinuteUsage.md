@@ -48,6 +48,17 @@ usc 不在索引中时取 `UNKNOWN`。
 会把这个 `.mvsv` 删掉（脚本常量 `CONSUME_SUCCESS = True`，见工作流「同步配置到 Supabase」步骤），
 好让队列头部前移、后续证券也能被同步到；未命中（已留 `Verify/MisMatch/` 留痕）与同步失败的件一律保留。
 
+同步目标表（2026-09 改口径）：`finv_quote_collect_futu`（原名 `finv_quote_futu_collect`，
+**主键同时由 stockId 改为 usc**）与 `finv_quote_secu`。两张表现在都按 `usc` 关联；`stockId`
+只用于富途配置表的 `stockId` 列与日志 / 留痕展示（它曾经是前者的写键、也曾经是 secu 表 `sid`
+的取值来源，两个身份都已取消）。脚本启动时会读一次 PostgREST OpenAPI 核对表名/主键/列是否与库
+一致，不一致就当场以退出码 2 收工（详见脚本 docstring 第四节的三处 ⚠️）。
+
+`finv_quote_collect_futu.type`（恒为 `'2'`）与 `finv_quote_secu.sid` 都**后续计划删除**，故脚本
+对它们**不读不写**：不查、不进 payload、不做非空列补列、也不做任何一致性校验，删列前后都能照常
+执行 —— 这类「库端自维护、脚本不该碰」的列统一列在脚本常量 `IGNORED_COLUMNS` 里，将来再有同类列
+往里加名字即可。
+
 ## 4 任务脚本入参
 
 ### 4.1 取值型参数
@@ -264,3 +275,18 @@ python3 VerifyQuoteMinute.py --usc 000001 --dry-run --fixture fixture.json
 python3 TriggerVerifyQuoteMinute.py --repo ACANX/Repo --ref quote-meta \
     --usc 000001 --print-only
 ```
+
+配置同步脚本（`VerifyQuoteMinuteSyncConfig.py`）的自测在 `tests/`，全程离线、不写库：
+
+```bash
+cd ../..            # 回到仓库根
+
+# 表名/主键口径：纯逻辑 + 替身 PostgREST 跑一遍 main()，断言真正发出的 upsert body
+python3 tests/syncQuoteCollectFutuSelfTest.py
+
+# 消费产物（删除 .mvsv）相关的纯逻辑
+python3 tests/syncDeleteSelfTest.py
+```
+
+两个脚本都以 `ALL PASS` 结束、退出码 0 为通过。`syncDeleteSelfTest.py` 里有一个用例依赖系统
+临时目录可写（`tempfile.mkdtemp`）；在沙箱或受限账户下可能被文件权限拦住，与脚本逻辑无关。

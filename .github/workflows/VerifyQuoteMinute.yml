@@ -123,8 +123,9 @@ jobs:
 
       # 采集步骤的产物落在 quote-meta 的 Verify/Success|Fail/{market}/；本步骤做它的下游：
       # 把 Success 下证券（文件名去掉扩展名即 usc）的查询参数回填进 Supabase 的两张配置表
-      # （finv_quote_futu_collect / finv_quote_secu），把 flag_enable 置 '1' 让新配置生效，
-      # 再把已同步完成的 .mvsv 删掉（脚本常量 CONSUME_SUCCESS = True）让清单头部前移。
+      # （finv_quote_collect_futu / finv_quote_secu —— 前者 2026-09 由 finv_quote_futu_collect
+      #  改名而来、**主键同时由 stockId 改为 usc**，两张表现在都按 usc 关联），把 flag_enable
+      # 置 '1' 让新配置生效，再把已同步完成的 .mvsv 删掉（脚本常量 CONSUME_SUCCESS = True）让清单头部前移。
       # 更新规则、抽样口径、未命中留痕、产物消费与退出码见脚本模块 docstring：
       #   .github/Python/VerifyQuoteMinuteSyncConfig.py
       #

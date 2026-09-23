@@ -2,6 +2,10 @@
 # -*- coding: utf-8 -*-
 """VerifyQuoteMinuteSyncConfig.py — 把 Verify/Success/ 下证券的查询参数同步进 Supabase 配置表。
 
+目标表（2026-09 改名，务必按新口径理解）：
+    finv_quote_collect_futu   富途采集配置表，**主键 usc**（原名 finv_quote_futu_collect，主键 stockId）
+    finv_quote_secu           证券元数据登记表，主键 usc（其 sid 列已废弃，脚本不读不写）
+
 入参：环境变量 INPUT_*（由工作流 .github/workflows/VerifyQuoteMinute.yml 的「同步配置到 Supabase」
 步骤注入，本地自测直接设同名环境变量即可）。无命令行参数。
 
@@ -27,7 +31,8 @@
     一、工具定位        为什么需要这一步、与 VerifyQuoteMinute.py 的分工
     二、抽样规则        概率闸门 → 本批 → 清单头部补齐
     三、映射表          由 .mvsv 文件名取 usc，经 idx + JSONL 反序列化出查询参数
-    四、更新规则        两张表的字段映射、flag_enable、dt_update、批量 upsert 与三处刻意的收窄
+    四、更新规则        两张表按 usc 关联的字段映射、flag_enable、dt_update、批量 upsert，
+                        以及 upsert 的三个硬性前提（非空列、列真实存在、行键一致）与三处刻意的收窄
     五、PostgREST 调用  批量读现状 + 每表一条批量 upsert（含重试与分块）
     六、未命中与插入    缺行时留痕还是新建（INPUT_SYNC_ALLOW_INSERT）、新增行如何被单独列出
     七、日志与摘要      逐条字段级日志、dry-run 的 SQL 计划、Actions 步骤摘要
@@ -77,7 +82,8 @@ instrumentType / subInstrumentType / typeSecu / secuRegion / secuMarket），且
 --------------------------------------------------------------------------------
 四、更新规则
 --------------------------------------------------------------------------------
-两张表都以 stockId 关联（取值即映射记录的 stockId）：
+两张表都以 usc 关联（取值即映射记录的 usc；futu 表 2026-09 由 finv_quote_futu_collect 改名，
+**主键同时由 stockId 改为 usc**）：
 
     finv_quote_collect_futu   主键 usc     —— 富途采集配置表
         quote_market       ← quoteMarket
@@ -87,16 +93,23 @@ instrumentType / subInstrumentType / typeSecu / secuRegion / secuMarket），且
         marketCode         ← marketCode
         instrumentType     ← instrumentType
         subInstrumentType  ← subInstrumentType
+        stockId            ← stockId    （改主键后它只是普通业务列：该表还有这一列才写，见下文核对）
         flag_enable        ← '1'（写死，不取映射记录的 flagEnable）
         dt_update          ← 本次写入时刻
 
-    finv_quote_secu           主键 usc          —— 证券元数据登记表（sid = 映射记录的 stockId）
+    finv_quote_secu           主键 usc          —— 证券元数据登记表
         region             ← secuRegion
         market             ← secuMarket
         name_sc            ← nameSc
         type_secu          ← typeSecu
         flag_enable        ← '1'
         dt_update          ← 本次写入时刻
+
+⚠️ 两张表都只按 usc 关联（各自的主键，取值即映射记录的 usc），放进 upsert body 的就是这一列。
+stockId 只用于富途配置表的 stockId 列与日志 / 留痕展示 —— 它曾经有两个身份，现在都没了：
+是那张表的写键（随改名改成 usc）、是 secu 表 `sid` 的取值来源（随 sid 列废弃一并脱钩）。
+（历史坑：那时写的是 `stockId = cell(record.get(FUTU_KEY))`，FUTU_KEY 改成 usc 之后它取到的其实是
+usc，于是 secu 新建会把 usc 写进 sid、sid 校验也退化成「sid 与 usc 比」，几乎每行都误报。）
 
 写库方式：**每张表一条批量 upsert**（POST + Prefer: resolution=merge-duplicates），不逐行 PATCH ——
 每行的取值各不相同，PATCH 只能「一份 body 命中多行」，而 upsert 的多行 body 正是「N 行不同值、
@@ -113,13 +126,14 @@ instrumentType / subInstrumentType / typeSecu / secuRegion / secuMarket），且
 
     已在册的行 → upsert → 走 DO UPDATE 分支，创建时间不被改写；
     缺行的行   → 依 INPUT_SYNC_ALLOW_INSERT：
-                 真：单独一条 upsert 插入（补 dt_create = 本次时刻；futu 表另补 type='2'），
-                     插入的行在日志与摘要里**单独列出**，便于事后核查与修正；
+                 真：单独一条 upsert 插入（补 dt_create = 本次时刻），插入的行在日志与摘要里
+                     **单独列出**，便于事后核查与修正；
                  假（默认）：不插入，写 Verify/MisMatch/{usc}.txt 留痕，人工决定是否补录。
 
 两批不合一条 body 的原因：PostgREST 的 INSERT 与 DO UPDATE SET 共用同一份列清单，body 里带
 dt_create 会让**更新**也把创建时间刷成现在。拆开后各自语义干净，且缺行是极少数
-（实测 3370 个 Success usc 里只有 11 条不在 futu 表），不会明显增加请求数。
+（旧表按 stockId 关联时实测 3370 个 Success usc 里只有 11 条缺行；改成按 usc 关联后请以本轮
+日志的「表内缺行」计数为准），不会明显增加请求数。
 
 ⚠️ upsert 的硬性前提 —— 非空列（实测教训）：INSERT … ON CONFLICT 是**先按 INSERT 分支校验约束、
 再判定冲突**的，缺一列「NOT NULL 且无默认值」的列就直接报 23502，即使该行其实命中冲突、
@@ -128,26 +142,45 @@ dt_create 会让**更新**也把创建时间刷成现在。拆开后各自语义
 
     启动时读一次 PostgREST OpenAPI（GET /rest/v1/，Accept: application/openapi+json），
     取每张表 required 列里**没有默认值**的那些（即 INSERT 分支必须出现的列，主键除外）：
-        finv_quote_collect_futu  → 无（stockId 是主键，dt_create / dt_update 有默认值）
+        finv_quote_collect_futu  → 以实测 schema 为准（改名前是「无」，主键当时是 stockId）
         finv_quote_secu          → region、market
     更新分支：payload 里缺的这些列按**库中现值原样回写**（值不变，只为让约束通过，
               日志里以「= 补列」单列一行）；
     新建分支：这些列必须由映射凑齐，凑不齐就不插入、转留痕（INSERT_REQUIRED_MISSING），
               免得一条坏行把整块 upsert 拖失败。
 
-⚠️ upsert 的第二个前提 —— 行键必须一致：PostgREST 的批量 body 要求**每行的键完全相同**，
+⚠️ upsert 的第二个前提 —— 列必须真实存在（改名/改建表后最容易踩）：body 或 select 里带上一个
+表里没有的列，PostgREST 直接 400（PGRST204 "Could not find the '<列>' column"；select 则是
+column does not exist），**整块**（乃至整个读现状阶段）一起失败。故启动时按同一份 schema 核对：
+
+    表不在 schema 里 / 主键列不存在 / flag_enable 或 dt_update 不存在 → 任务级错误（退出 2），
+        此时继续跑只会「写不进去」或「写错行」，且失败点散落在一块块 upsert 里，不好排查；
+    字段映射里表里没有的列 → 从本轮 payload 与 select 里剔除，并打告警（其余列照常同步）；
+    NOT NULL 列不在字段映射里 → 告警（更新分支按库中现值回写，新建分支会转未命中留痕）。
+    schema 读不到时以上核对全部跳过，退回既有口径：交给库端约束兜底，失败按块记录在册。
+
+⚠️ upsert 的第三个前提 —— 行键必须一致：PostgREST 的批量 body 要求**每行的键完全相同**，
 否则整条请求 400（PGRST102 "All object keys must match"，实测）。而各行的变更字段本来就不同
 （A 行改了行情市场、B 行没改），故提交前按「同一批次内 payload 的并集」补列：更新批补库中
 现值（值不变），新建批补 null（该列此时必为可空）。这不改变任何真实取值，只让 body 形状一致。
 
 三处刻意的收窄（都是为了「宁可少写，不可写错」）：
-    ① 按主键写、不用业务键：secu 表的 `sid` 实测重复（sid=800000 同时挂在 usc=800000 与 usc=HSI
-       上），而 `usc` 才是主键（唯一）。故 secu 表按 usc 写，sid 只作校验 —— 现有行的 sid 与映射
-       记录的 stockId 不一致时打告警，但照常更新（按主键写不可能改错行）。
+    ① 只按主键写、不用业务键：两张表的写键都是各自的主键 usc（唯一的业务标识），不用
+       sid / stockId 这类可能重复或已废弃的键去找行 —— 按主键写不可能改错行。
     ② 映射记录里为空值的字段**不写**：整表有 30 条记录缺 nameSc，硬写空值会抹掉库里的现成值，
        故跳过该字段并告警（同一条记录的其余字段照常更新）。
     ③ 「已完全一致」的行不入批：字段全等且 flag_enable 已是 '1' 时整行跳过（连 dt_update
        也不动），这样重复运行几乎零写入，也不会把审计时间戳刷成无意义的噪声。
+
+刻意不碰的列（IGNORED_COLUMNS = type / sid）：
+    finv_quote_collect_futu 的 `type` 恒为 '2'；finv_quote_secu 的 `sid` 此前只被当作「按 stockId
+    关联」的关联列。两列都**后续计划删除**，故脚本对它们**不读不写** —— 不在 select 里查、不放进
+    payload、不做 NOT NULL 补列（新建时同样不补，留库端默认值）、也不做任何一致性校验。
+    这样做是为了「脱钩」：列还在时不去动它（本来也不需要本脚本维护）；列一旦删掉，脚本毫无感知、
+    照常跑 —— 否则删列那一刻起，每轮 upsert 都会以 PGRST204「找不到列」整块失败。
+    唯一的例外是 schema 显示某列**确实是 NOT NULL 且无默认值**：那时只告警提示「新建行可能被库端
+    拒绝（23502）」，仍不擅自补写 —— 补了就等于把脚本重新绑死在这一列上。
+    将来若还有类似的「库端自维护、脚本不该碰」的列，往 IGNORED_COLUMNS 里加名字即可。
 
 --------------------------------------------------------------------------------
 五、PostgREST 调用
@@ -156,7 +189,8 @@ dt_create 会让**更新**也把创建时间刷成现在。拆开后各自语义
 每个请求同时带 apikey 与 Authorization: Bearer；写请求靠 Prefer: return=representation 回读
 写入结果，用于统计行数与区分「新增 / 更新」。缺省一轮 6 个请求：
 
-    GET  /rest/v1/  Accept: application/openapi+json   取非空列约束（每表 1 次，见第四节）
+    GET  /rest/v1/  Accept: application/openapi+json   取表结构：列存在性与非空列约束（每轮 1 次，
+                                                       两张表共用一份，见第四节的两处 ⚠️）
     GET  {table}?select=<列…>&<主键>=in.(…)            分块取现状（READ_CHUNK = 150 键/请求）
     POST {table}?on_conflict=<主键>                    批量 upsert（WRITE_CHUNK = 200 行/请求）
 
@@ -173,7 +207,7 @@ dt_create 会让**更新**也把创建时间刷成现在。拆开后各自语义
 
     INDEX_MISS            usc 不在 UscFutuMapping.jsonl.idx 中（无映射记录）
     RECORD_FIELD_MISSING  映射记录缺关键字段（stockId/marketType/marketCode/instrumentType/subInstrumentType）
-    FUTU_ROW_MISSING      表里没有该 stockId 的行，且本轮未开启自动插入
+    FUTU_ROW_MISSING      表里没有该 usc 的行，且本轮未开启自动插入
     SECU_ROW_MISSING      表里没有该 usc 的行，且本轮未开启自动插入
     INSERT_REQUIRED_MISSING  表里缺行、且映射凑不齐该表的非空列（INSERT 分支必填），故本轮不插入
 
@@ -181,7 +215,8 @@ INPUT_SYNC_ALLOW_INSERT 置真时，缺行的证券改为**新建**（不算未�
 「表内原本没有」由写入前的现状快照判定，落进该表的 inserts 批；写完后按回读结果逐条列出
 （步骤日志里以 ＋ 开头、末尾单列一行，运行摘要里也单列一节），便于事后核查与修正。
 
-「sid 与映射不一致」等可疑但不阻塞的情况只打告警（⚠），计入摘要的「告警」行，不产生留痕文件。
+「主键重复」「表结构漂移导致某列被剔除」等可疑但不阻塞的情况只打告警（⚠），计入摘要的「告警」行，
+不产生留痕文件。
 
 --------------------------------------------------------------------------------
 七、日志与摘要
@@ -235,7 +270,9 @@ import urllib.request
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPT_NAME = os.path.basename(os.path.abspath(__file__))
-TASK_VERSION = "1"
+#: 与 MisMatch 留痕文件里的「任务脚本（版本 …）」同源：口径变更时递增，便于事后分辨
+#: 某份留痕是哪一版写下的。2 = 富途配置表改名 finv_quote_collect_futu / 主键改 usc 之后的版本。
+TASK_VERSION = "2"
 
 # ---------------------------------------------------------------------------
 # 常量
@@ -283,13 +320,23 @@ MAX_ATTEMPTS = 3            # 单次请求的最大尝试次数（含首次）
 RETRY_BACKOFF = 2.0         # 重试退避基数（秒）：第 n 次退避 RETRY_BACKOFF * 2^(n-1)
 RETRYABLE_STATUS = (429, 500, 502, 503, 504)
 
+#: 映射记录里的富途股票 id 字段名。与关联键无关：两张表都按 usc 写，它只用于富途配置表的
+#: stockId 列、以及日志 / 留痕展示 —— 取值必须是映射记录的 stockId，不能再借 FUTU_KEY 代取
+#: （FUTU_KEY 是 usc，`record.get(FUTU_KEY)` 拿到的是 usc，不是 stockId）。
+STOCK_ID_FIELD = "stockId"
+
 # 更新规则（字段口径见模块 docstring 第四节）
+# ⚠️ 富途采集配置表 2026-09 由 finv_quote_futu_collect 改名为 finv_quote_collect_futu，
+#    **主键同时由 stockId 改为 usc**：故 FUTU_KEY 与 SECU_KEY 同为 "usc"，两张表都以 usc 关联。
+#    stockId 随之降级为普通业务列（映射记录里仍有），该表确实还有这一列时才同步。
 FUTU_TABLE = "finv_quote_collect_futu"
 FUTU_KEY = "usc"
-FUTU_FIELDS = (("usc", "usc"),("quote_market", "quoteMarket"), ("type_symbol", "typeSymbol"),
+FUTU_FIELDS = (("usc", "usc"), ("quote_market", "quoteMarket"), ("type_symbol", "typeSymbol"),
                ("futu_symbol", "futuSymbol"), ("marketType", "marketType"),
                ("marketCode", "marketCode"), ("instrumentType", "instrumentType"),
-               ("subInstrumentType", "subInstrumentType"))
+               ("subInstrumentType", "subInstrumentType"),
+               # 不再是关联键，但仍是该表的业务列：有就同步，没有则由列存在性核对剔除
+               (STOCK_ID_FIELD, STOCK_ID_FIELD))
 
 SECU_TABLE = "finv_quote_secu"
 SECU_KEY = "usc"
@@ -301,7 +348,8 @@ RECORD_FIELDS = ("usc", "stockId", "typeSymbol", "quoteMarket", "futuSymbol", "m
                  "marketCode", "instrumentType", "subInstrumentType", "nameSc",
                  "typeSecu", "secuRegion", "secuMarket")
 
-#: 缺任一字段即无法确定完整查询参数（仍可更新其余字段，缺的字段跳过并告警）
+#: 缺任一字段即无法确定完整查询参数（stockId 另用于富途配置表的 stockId 列）：
+#: 命中即整条转 MisMatch 留痕、不做部分更新；非关键字段缺值只在单列层面跳过并告警。
 CRITICAL_FIELDS = ("stockId", "marketType", "marketCode", "instrumentType", "subInstrumentType")
 
 ENABLE_COLUMN = "flag_enable"
@@ -309,13 +357,23 @@ ENABLE_VALUE = "1"
 DT_UPDATE_COLUMN = "dt_update"
 #: 仅在**新建**时写入：创建时间（更新时写它会抹掉首次登记时间，见 docstring 第四节）
 DT_CREATE_COLUMN = "dt_create"
-#: 各表新建时补的常量列（全表同值；更新时不写）
+#: 刻意**不读不写**的列：由库端 / 其它流程维护，本脚本一律不碰 ——
+#: 既不出现在 select 里、也不进 upsert 的 body，更不做 NOT NULL 补列。
+#:   type —— finv_quote_collect_futu 该列恒为 '2'，且后续计划删除；
+#:   sid  —— finv_quote_secu 该列后续计划删除（此前只被当作「按 stockId 关联」的关联列）。
+#: 脚本若还引用它们，删列之后每轮都会以 PGRST204（找不到列）整块失败，故提前脱钩：
+#: 列还在时不动它（本来也不需要本脚本维护），列删掉后也毫无影响。
+IGNORED_COLUMNS = ("type", "sid")
+
+#: 各表新建时补的常量列（全表同值；更新时不写）。
+#: 目前两张表都没有要补的常量列：type / sid 已归入 IGNORED_COLUMNS（都计划删除），
+#: 不再由本脚本补 —— 留库端默认值即可。保留这张表作为扩展点：
+#: ⚠️ 写在这里的列名是按**库中现状**写死的，表里若已没有该列，会被启动时的列存在性核对
+#:    剔除并告警，不会让整块 upsert 因 PGRST204（找不到列）而 400。
 INSERT_CONSTANTS = {
-    FUTU_TABLE: {"type": "2"},      # 实测全表 18599 行恒为 '2'
+    FUTU_TABLE: {},                 # 无
     SECU_TABLE: {},                 # secu 表其余列（timezone/provider/day_incr_max 等）留库端默认
 }
-#: secu 表关联列：新建时必须写（库端按 sid = 映射记录的 stockId 关联）
-SECU_LINK_COLUMN = "sid"
 
 # 未命中分类（写进 MisMatch 文件的「原因」段）
 MISS_INDEX = "INDEX_MISS"
@@ -327,7 +385,7 @@ MISS_INSERT_REQUIRED = "INSERT_REQUIRED_MISSING"
 MISS_REASONS = {
     MISS_INDEX: "usc 不在 UscFutuMapping.jsonl.idx 中（无映射记录，解析不出查询参数）",
     MISS_RECORD_FIELD: "映射记录缺关键字段，拼不出完整请求参数",
-    MISS_FUTU_ROW: "表 finv_quote_collect_futu 中不存在该 stockId 的行（本轮未开启自动插入）",
+    MISS_FUTU_ROW: "表 finv_quote_collect_futu 中不存在该 usc 的行（本轮未开启自动插入）",
     MISS_SECU_ROW: "表 finv_quote_secu 中不存在该 usc 的行（本轮未开启自动插入）",
     MISS_INSERT_REQUIRED: "表内缺行且映射凑不齐非空列（该表本轮不写，避免整块 upsert 失败）",
 }
@@ -549,6 +607,8 @@ class SupabaseClient:
         self.apiKey = apiKey
         self.timeout = timeout
         self.requests = 0
+        #: PostgREST OpenAPI 缓存：None = 还没读；False = 读不到（本轮不做列核对）；dict = 读到了
+        self._spec = None
 
     def _request(self, method, table, query, body=None, prefer=None, accept=None):
         """发一次请求（含重试），返回 (状态码, 响应文本)。"""
@@ -602,9 +662,46 @@ class SupabaseClient:
                 result.setdefault(str(row[keyColumn]), []).append(row)
         return result
 
+    def _openapi(self):
+        """读一次 PostgREST OpenAPI（整轮缓存），返回 spec；读不到返回 False。
+
+        整轮只读一次：写库前要用它核对列口径（inspectSchema），而补列与列过滤都要用同一份。
+        读不到（权限/网络/网关异常）不抛错：本轮降级为「不做列核对」，交给库端约束兜底。
+        """
+        if self._spec is None:
+            try:
+                _status, body = self._request("GET", "", None, accept="application/openapi+json")
+                spec = json.loads(body or "{}")
+                self._spec = spec if isinstance(spec, dict) else False
+            except (SupabaseRestError, ValueError) as exc:
+                print("  [告警] 读取 PostgREST OpenAPI 失败（%s）：本轮跳过列口径核对"
+                      "（表名/主键/列存在性都不校验），交给库端约束兜底" % exc, flush=True)
+                self._spec = False
+        return self._spec
+
+    def tableSchema(self, table):
+        """取一张表的 (实际列集合, NOT NULL 且无默认值的列集合)。
+
+        返回值里 columns 的三种形态含义不同，调用方必须区分：
+            列集合（非空）  schema 里找到了这张表；
+            空集合          schema 可用但**没有这张表**（表名错/未暴露给 Data API）；
+            None            schema 根本读不到（本轮不做任何列核对）。
+        """
+        spec = self._openapi()
+        if not spec:
+            return None, set()
+        definition = (spec.get("definitions") or {}).get(table) or {}
+        properties = definition.get("properties") or {}
+        if not properties:
+            return set(), set()
+        required = {name for name in (definition.get("required") or [])
+                    if name in properties and properties[name].get("default") is None}
+        return set(properties), required
+
     def requiredColumns(self, table, keyColumn):
         """取表里「NOT NULL 且无默认值」的列（PostgREST OpenAPI 的 required − 有默认值 − 主键）。
 
+        UPSERT 的硬性前提（主流程入口是 inspectSchema，它一次拿全 columns + required）：
         批量 upsert 是先按下 **INSERT 分支校验约束**、再判定冲突的：只要缺一列 NOT NULL 且无默认值
         的列，即使该行其实命中冲突、本该只走更新分支，也会直接报 23502（实测 finv_quote_secu 的
         region / market 就是这样）。所以带上这些列是 upsert 的硬性前提，更新分支也一样带，
@@ -612,21 +709,8 @@ class SupabaseClient:
 
         取不到 schema（权限/网络/表未暴露）时返回空集：交给库端约束兜底，失败按块记录在册。
         """
-        try:
-            status, body = self._request("GET", "", None, accept="application/openapi+json")
-            spec = json.loads(body)
-            definition = (spec.get("definitions") or {}).get(table) or {}
-            properties = definition.get("properties") or {}
-        except (SupabaseRestError, ValueError, AttributeError) as exc:
-            print("  [告警] 读取 %s 的 schema 失败（%s），NOT NULL 补列跳过" % (table, exc), flush=True)
-            return set()
-        columns = set()
-        for name in definition.get("required") or []:
-            if name == keyColumn:
-                continue                      # 主键由写请求自己带上
-            if name in properties and properties[name].get("default") is None:
-                columns.add(name)
-        return columns
+        _columns, required = self.tableSchema(table)
+        return {name for name in required if name != keyColumn}   # 主键由写请求自己带上
 
     def upsert(self, table, rows, conflictColumn):
         """批量 upsert（POST + Prefer: resolution=merge-duplicates），返回 (写入行, 失败块)。
@@ -815,22 +899,110 @@ def localSuccessFiles(root):
 # ---------------------------------------------------------------------------
 
 
-def loadCurrentState(client, records, required):
-    """批量取两张表的现状行，返回 ({stockId: [行]}, {usc: [行]})。
+def inspectSchema(client):
+    """核对两张表的列口径，返回 ({表名: NOT NULL 列}, {表名: 实际列集合|None}, [告警])。
 
-    键一律用**各自的主键**：futu 表 stockId、secu 表 usc —— upsert 的冲突判定也走同一对主键，
-    读与写的口径因此完全一致。多取的列只用于校验与日志，其中 required（NOT NULL 且无默认值）
-    必须读回来，更新分支要把它们的现值一并写回去（见 SupabaseClient.requiredColumns）。
+    为什么要在写库前先核对一次表结构：表名 / 主键 / 列口径一旦与脚本不一致，继续跑只有两种下场 ——
+    「根本写不进去」（每块 upsert 400 / 23502，失败点散落在一块块日志里）或「写错行」。
+    富途配置表刚由 finv_quote_futu_collect 改名并换主键（stockId → usc），正是最该当场核对的时候：
+
+        表不在 schema 里           → 任务级错误（退出 2）：表名写错，或没暴露给 Data API；
+        主键列不在表里             → 任务级错误：upsert 的 on_conflict 必须落在真实主键上；
+        flag_enable/dt_update 缺列 → 任务级错误：写入口径与库完全不符，继续跑只会写出错误结论；
+        字段映射里的列不存在       → 从本轮写入中剔除并告警（其余列照常同步，不会整块失败）；
+        NOT NULL 列不在字段映射里  → 告警（更新分支按库中现值回写，新建分支会转成未命中留痕）。
+
+    例外是 IGNORED_COLUMNS（如 type）：它们既不进 select 也不进 payload，连 NOT NULL 补列都不做 ——
+    库端该列有默认值时一切照旧；真要是「NOT NULL 且无默认值」，补列反而会把脚本和这一列绑死，
+    删列时立刻报 PGRST204。故只对这种情况留一条告警（新建行可能被库端拒绝），由人工决定。
+
+    schema 读不到时一律返回 None 并跳过全部核对 —— 与既有降级口径一致，交给库端约束兜底。
     """
+    required, columns, warns = {}, {}, []
+    for table, key, fields in ((FUTU_TABLE, FUTU_KEY, FUTU_FIELDS),
+                               (SECU_TABLE, SECU_KEY, SECU_FIELDS)):
+        actual, tableRequired = client.tableSchema(table)
+        columns[table] = actual
+        required[table] = {name for name in tableRequired
+                           if name != key and name not in IGNORED_COLUMNS}
+        if actual is None:
+            continue
+        wanted = [column for column, _ in fields]
+        if not actual:
+            raise TaskError("PostgREST schema 里没有表 %s（脚本期望主键 %s、列 %s）："
+                            "表是否已改名、或未暴露给 Data API？"
+                            % (table, key, "、".join(wanted)))
+        if key not in actual:
+            raise TaskError("表 %s 没有主键列 %s（实际列：%s）—— 脚本按该列 upsert，口径必须一致"
+                            % (table, key, "、".join(sorted(actual))))
+        for column in (ENABLE_COLUMN, DT_UPDATE_COLUMN):
+            if column not in actual:
+                raise TaskError("表 %s 没有列 %s（实际列：%s）—— 写入口径与库不符，"
+                                "继续跑只会写出无法判定的结果"
+                                % (table, column, "、".join(sorted(actual))))
+        missing = [column for column in wanted if column not in actual]
+        if len(missing) == len(wanted):
+            raise TaskError("表 %s 里没有一个期望列存在（期望 %s；实际 %s）—— 表结构是否已大改？"
+                            % (table, "、".join(wanted), "、".join(sorted(actual))))
+        if missing:
+            warns.append("表 %s 缺列 %s：本轮跳过这些字段（表结构已漂移，请核对脚本里的字段映射）"
+                         % (table, "、".join(missing)))
+        for column in sorted(required[table]):
+            if column not in wanted:
+                warns.append("表 %s 的 %s 是 NOT NULL 且无默认值，却不在字段映射里："
+                             "更新分支按库中现值回写、新建分支会转成未命中留痕" % (table, column))
+        for column in sorted(set(tableRequired) & set(IGNORED_COLUMNS)):
+            warns.append("表 %s 的 %s 属刻意忽略列（本脚本不读不写）：它现在是 NOT NULL 且无默认值，"
+                         "新建行可能被库端拒绝（23502）—— 请确认库端已给它默认值或允许为空"
+                         % (table, column))
+    return required, columns, warns
+
+
+def describeTable(table, key, columns, required):
+    """给日志用的一行表结构自描述：主键、列数、NOT NULL 无默认值的列。"""
+    actual = columns.get(table)
+    if actual is None:
+        return "schema 不可用，本轮跳过列核对（主键 %s）" % key
+    return "主键 %s，%d 列，NOT NULL 无默认值：%s" % (
+        key, len(actual), "、".join(sorted(required.get(table, ()))) or "无")
+
+
+def selectableColumns(names, allowed):
+    """按表实际列过滤 select 清单（allowed=None = schema 不可用，一律不过滤）。
+
+    ⚠️ select 里只要带一个表里不存在的列，PostgREST 就直接 400（column does not exist），
+    整轮连现状都读不回来。故列口径漂移时先过滤再发请求：读不到该列，顶多当作「库里没这个字段」，
+    比整轮读失败好排查得多。主键与 flag_enable / dt_update 已由 inspectSchema 保证存在。
+    """
+    ordered = list(dict.fromkeys(names))
+    if allowed is None:
+        return ordered
+    return [name for name in ordered if name in allowed]
+
+
+def loadCurrentState(client, records, required, columns=None):
+    """批量取两张表的现状行，返回 ({主键: [行]}, {主键: [行]})。
+
+    两张表的键都是**主键 usc**（futu 表改名前是 stockId，随改名一并改口径）—— upsert 的冲突判定
+    也走同一个键，读与写的口径因此完全一致。多取的列只用于校验与日志，其中 required
+    （NOT NULL 且无默认值）必须读回来，更新分支要把它们的现值一并写回去
+    （见 SupabaseClient.requiredColumns）。
+
+    刻意不查 IGNORED_COLUMNS 里的列（type / sid）：它们都由库端维护、且计划删除，
+    读回来既没用，删列之后还会让这条 select 直接 400。
+    """
+    columns = columns or {}
     futuColumns = [FUTU_KEY, DT_UPDATE_COLUMN] + [column for column, _ in FUTU_FIELDS] + [ENABLE_COLUMN]
-    secuColumns = [SECU_KEY, SECU_LINK_COLUMN, DT_UPDATE_COLUMN] \
+    secuColumns = [SECU_KEY, DT_UPDATE_COLUMN] \
         + [column for column, _ in SECU_FIELDS] + [ENABLE_COLUMN]
     futuColumns += sorted(required.get(FUTU_TABLE, ()))
     secuColumns += sorted(required.get(SECU_TABLE, ()))
     futuKeys = [cell(record.get(FUTU_KEY)) for record in records]
     secuKeys = [cell(record.get(SECU_KEY)) for record in records]
-    futuRows = client.selectByKeys(FUTU_TABLE, FUTU_KEY, futuKeys, list(dict.fromkeys(futuColumns)))
-    secuRows = client.selectByKeys(SECU_TABLE, SECU_KEY, secuKeys, list(dict.fromkeys(secuColumns)))
+    futuRows = client.selectByKeys(FUTU_TABLE, FUTU_KEY, futuKeys,
+                                   selectableColumns(futuColumns, columns.get(FUTU_TABLE)))
+    secuRows = client.selectByKeys(SECU_TABLE, SECU_KEY, secuKeys,
+                                   selectableColumns(secuColumns, columns.get(SECU_TABLE)))
     return futuRows, secuRows
 
 
@@ -884,25 +1056,34 @@ def upsertSql(table, keyColumn, rows):
             % (table, ", ".join(columns), ", ".join(tuples), keyColumn, sets))
 
 
-def planRow(record, futuRows, secuRows, stamp, allowInsert, required):
+def planRow(record, futuRows, secuRows, stamp, allowInsert, required, columns=None):
     """算出一条证券对两张表的写计划。
 
     :param required: {表名: {NOT NULL 且无默认值的列}}，见 SupabaseClient.requiredColumns。
+    :param columns: {表名: 该表实际列集合 | None}，见 inspectSchema；None = schema 不可用、不过滤。
     :return: (plans, misses, warns)
         plans  = [{"table","key","keyValue","payload","changed","unchanged","skipped","fill","insert"}]
                  payload 为空 = 无需变更（不入批）；insert = 该行表里没有，走新建分支；
         misses = 未命中分类码列表（该表不写，其余表照常写）；
-        warns  = 可疑但不阻塞的告警（如 secu 行的 sid 与映射记录不一致）。
+        warns  = 可疑但不阻塞的告警（如主键重复、表结构漂移导致某列被剔除）。
+
+    ⚠️ 两张表都只按 **usc**（各自的主键）关联，取值即映射记录的 usc。曾经这里写的是
+    `stockId = cell(record.get(FUTU_KEY))` 并拿它当两张表的键：FUTU_KEY 由 stockId 改成 usc 之后，
+    它取到的其实是 usc，于是 secu 新建会把 usc 写进 sid、sid 校验也变成「sid 与 usc 比」（几乎
+    每行都误报）。现在 sid 已随「后续删除该列」一并脱钩（见 IGNORED_COLUMNS），本函数不再碰它：
+    不查、不写、也不做一致性校验；stockId 只用于富途配置表的 stockId 列与日志 / 留痕展示。
     """
-    stockId = cell(record.get(FUTU_KEY))
-    usc = cell(record.get(SECU_KEY))
+    futuKey = cell(record.get(FUTU_KEY))
+    secuKey = cell(record.get(SECU_KEY))
+    columns = columns or {}
     plans, misses, warns = [], [], []
 
     for spec in ({"table": FUTU_TABLE, "key": FUTU_KEY, "fields": FUTU_FIELDS,
-                  "keyValue": stockId, "current": futuRows},
+                  "keyValue": futuKey, "current": futuRows},
                  {"table": SECU_TABLE, "key": SECU_KEY, "fields": SECU_FIELDS,
-                  "keyValue": usc, "current": secuRows}):
+                  "keyValue": secuKey, "current": secuRows}):
         table, key, keyValue = spec["table"], spec["key"], spec["keyValue"]
+        allowed = columns.get(table)            # None = schema 不可用，不做列存在性过滤
         rows = spec["current"].get(keyValue) or []
         if not rows and not allowInsert:
             misses.append(MISS_FUTU_ROW if table == FUTU_TABLE else MISS_SECU_ROW)
@@ -911,11 +1092,6 @@ def planRow(record, futuRows, secuRows, stamp, allowInsert, required):
             warns.append("%s 中 %s=%s 出现 %d 行（主键重复，库端约束异常），按第一行算差异"
                          % (table, key, keyValue, len(rows)))
         current = rows[0] if rows else {}
-        if table == SECU_TABLE and rows and cell(current.get(SECU_LINK_COLUMN)) != stockId:
-            # usc 是主键，按它写不会改错行；sid 不一致只是可疑，提醒人工复核
-            warns.append("%s 中 usc=%s 的 %s=%s，与映射记录的 stockId=%s 不一致（仍按 usc 更新）"
-                         % (table, usc, SECU_LINK_COLUMN,
-                            cell(current.get(SECU_LINK_COLUMN)) or "(空)", stockId))
         payload, changed, unchanged, skipped = buildPayload(spec, record, current, stamp)
         fill = []
         if payload and rows:
@@ -926,22 +1102,27 @@ def planRow(record, futuRows, secuRows, stamp, allowInsert, required):
                 payload[column] = cell(current.get(column))
                 fill.append((column, cell(current.get(column))))
         if not rows:
-            # 新建：补齐关联列与常量列，再校验 NOT NULL 是否都凑得齐
-            if table == SECU_TABLE:
-                payload[SECU_LINK_COLUMN] = stockId
-                changed.append((SECU_LINK_COLUMN, "(新建补值)", "", stockId))
+            # 新建：只补创建时间与常量列（NOT NULL 是否凑得齐在过滤之后统一校验）
             payload[DT_CREATE_COLUMN] = stamp
             changed.append((DT_CREATE_COLUMN, "(新建补值)", "", stamp))
             for column, value in sorted(INSERT_CONSTANTS.get(table, {}).items()):
                 payload[column] = value
                 changed.append((column, "(固定值)", "", value))
+        if allowed is not None:
+            # 列存在性过滤：表里没有的列一律不写，否则整块 upsert 会 400（PGRST204 找不到列）
+            for column in sorted(set(payload) - allowed):
+                payload.pop(column)
+                changed = [item for item in changed if item[0] != column]
+                warns.append("表 %s 里没有列 %s：本轮不写该列（表结构口径可能已变，请核对）"
+                             % (table, column))
+        if not rows:
             lack = sorted(column for column in required.get(table, ())
                           if column not in payload or not cell(payload.get(column)))
             if lack:
                 # 凑不齐就得整块 upsert 失败（23502），不如按条留痕
                 misses.append("%s:%s" % (MISS_INSERT_REQUIRED, "、".join(lack)))
                 continue
-        plans.append({"table": table, "key": key, "keyValue": keyValue, "usc": usc,
+        plans.append({"table": table, "key": key, "keyValue": keyValue, "usc": secuKey,
                       "payload": payload, "changed": changed, "unchanged": unchanged,
                       "skipped": skipped, "fill": fill, "insert": not rows, "current": current})
     return plans, misses, warns
@@ -1004,7 +1185,7 @@ def mismatchText(usc, record, source, misses, nowText):
         "# VerifyQuoteMinute 配置同步：未命中记录",
         "",
         "usc        : %s" % usc,
-        "stockId    : %s" % (cell((record or {}).get(FUTU_KEY)) or "(未知)"),
+        "stockId    : %s" % (cell((record or {}).get(STOCK_ID_FIELD)) or "(未知)"),
         "来源文件   : %s" % (source or "(无)"),
         "检测时刻   : %s (+08:00)" % nowText,
         "任务脚本   : %s（版本 %s）" % (SCRIPT_NAME, TASK_VERSION),
@@ -1029,7 +1210,7 @@ def mismatchText(usc, record, source, misses, nowText):
         "- 表内缺行时本脚本默认**只留痕不新建**（脚本常量 ALLOW_INSERT = False）：可先补建对应行",
         "  再重跑本步骤，或把常量 ALLOW_INSERT 置 True（或临时用 env INPUT_SYNC_ALLOW_INSERT=1",
         "  （新建的行会在运行摘要与步骤日志里单独列出，务必人工复核）。",
-        "- 补建口径：futu 表按 stockId；secu 表按 usc，且 sid 需等于上面解析出的 stockId。",
+        "- 补建口径：两张表都以 usc 关联（主键即 usc，%s 改名后尤其如此）。" % FUTU_TABLE,
         "- 补建后本文件保留作历史留痕即可。",
         "",
     ]
@@ -1087,9 +1268,10 @@ def resolveTargets(batchUscs, successUscs, batchSize, sampleLimit):
 
 def logPlan(position, total, usc, record, source, plans, misses, warns):
     """打印一条证券的完整计划日志（字段级，便于排查）。"""
+    # 头部这行的 stockId 必须取映射记录的 stockId（不是 FUTU_KEY：它现在是 usc，会与前面的 usc 重复）
     print("[%d/%d] usc=%s  quoteMarket=%s  stockId=%s"
-          % (position, total, usc, cell(record.get("quoteMarket")), cell(record.get(FUTU_KEY))),
-          flush=True)
+          % (position, total, usc, cell(record.get("quoteMarket")),
+             cell(record.get(STOCK_ID_FIELD))), flush=True)
     print("      来源 : %s" % (source or "(无 .mvsv 来源)"), flush=True)
     print("      映射 : %s" % "  ".join("%s=%s" % (name, cell(record.get(name)))
                                         for name in RECORD_FIELDS if name != "stockId"), flush=True)
@@ -1281,7 +1463,7 @@ def stepSummary(stats, branch, dryRun, probability, batchSize, sampleLimit, dele
             "| 无需变更 | %d | 行×表：该表该行已完全一致，不入批 |" % stats["skippedRows"],
             "| 消费 .mvsv | %d | %s |" % (stats["deleted"], consumeNote),
             "| ⤷ 删除失败 | %d | 该条下一轮会再同步一次（幂等） |" % stats["deleteFailed"],
-            "| 告警 | %d | 不阻塞：如 sid 与 usc 不符、主键重复 |" % len(stats["warns"]),
+            "| 告警 | %d | 不阻塞：如主键重复、表结构漂移导致某列被剔除 |" % len(stats["warns"]),
             "| 未命中留痕 | %d | Verify/MisMatch/{usc}.txt |" % stats["mismatched"],
             "| ⤷ 映射无记录 | %d | usc 不在 UscFutuMapping.jsonl.idx 中 |" % stats["indexMiss"],
             "| ⤷ 映射缺关键字段 | %d | 记录缺 stockId/市场/类型，拼不出请求参数 |" % stats["recordMiss"],
@@ -1439,15 +1621,18 @@ def main():
     # ⑤ 读现状（凭据与映射表同属任务级前置条件，缺了就退出 2）
     client = SupabaseClient(env(ENV_SUPABASE_REF), env(ENV_SUPABASE_KEY))
     futuRows, secuRows = {}, {}
-    required = {}
+    required, columns = {}, {}
     if records:
-        required = {FUTU_TABLE: client.requiredColumns(FUTU_TABLE, FUTU_KEY),
-                    SECU_TABLE: client.requiredColumns(SECU_TABLE, SECU_KEY)}
-        print("非空列约束 %s：%s｜%s：%s（upsert 的各分支都必须带上）"
-              % (FUTU_TABLE, "、".join(sorted(required[FUTU_TABLE])) or "无",
-                 SECU_TABLE, "、".join(sorted(required[SECU_TABLE])) or "无"), flush=True)
+        # 先核对表名 / 主键 / 列口径，再读现状：口径不符时当场退出 2，而不是等到一块块 upsert 报错
+        required, columns, schemaWarns = inspectSchema(client)
+        for warn in schemaWarns:
+            print("  [告警] %s" % warn, flush=True)
+        stats["warns"] += schemaWarns
+        print("表结构核对 %s：%s｜%s：%s" % (
+            FUTU_TABLE, describeTable(FUTU_TABLE, FUTU_KEY, columns, required),
+            SECU_TABLE, describeTable(SECU_TABLE, SECU_KEY, columns, required)), flush=True)
         try:
-            futuRows, secuRows = loadCurrentState(client, records, required)
+            futuRows, secuRows = loadCurrentState(client, records, required, columns)
         except SupabaseRestError as exc:
             raise TaskError("读取两张表现状失败：%s" % exc)
         print("现状读取   %s 命中 %d 个 %s｜%s 命中 %d 个 %s（请求 %d 次）"
@@ -1460,7 +1645,8 @@ def main():
     rowPlans, pendingMismatch = [], []
     for position, record in enumerate(records, start=1):
         usc = cell(record.get(SECU_KEY))
-        plans, misses, warns = planRow(record, futuRows, secuRows, stamp, allowInsert, required)
+        plans, misses, warns = planRow(record, futuRows, secuRows, stamp, allowInsert,
+                                       required, columns)
         logPlan(position, len(records), usc, record, sourceOf.get(usc, ""), plans, misses, warns)
         rowPlans.append((usc, record, plans))
         stats["warns"] += ["usc=%s：%s" % (usc, warn) for warn in warns]
