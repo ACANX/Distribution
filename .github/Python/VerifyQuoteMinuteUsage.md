@@ -8,6 +8,7 @@
 | 项 | 值 | 备注 |
 | --- | --- | --- |
 | `VerifyQuoteMinute.py` | 定时任务主体 | 读索引取参数、调行情接口、转 `.mvsv`、按结论回写仓库 |
+| `VerifyQuoteMinuteSyncConfig.py` | 采集的下游 | 把 `Verify/Success/` 下证券的查询参数同步进 Supabase 配置表，并删除已同步完成的 `.mvsv` |
 | `TriggerVerifyQuoteMinute.py` | 外部触发脚本示例 | 在仓库外部经 workflow_dispatch 调起工作流并传入 `usc` |
 | `VerifyQuoteMinuteWatchlist.txt` | 待验证清单 | 未指定 `usc` 时（如 schedule 触发）从此文件取 usc |
 | `GitHubCommitContent.py` | 提交库 | 既有脚本，负责把本地文件写进仓库指定分支的指定路径 |
@@ -42,6 +43,10 @@
 usc 不在索引中时取 `UNKNOWN`。
 
 失败件与成功件分属两个目录，互不覆盖：同名 usc 若两边都存在，**以 `采集时刻` 更晚的一份为准**。
+
+成功件是「待同步配置」的队列：`VerifyQuoteMinuteSyncConfig.py` 把它的查询参数同步进 Supabase 后，
+会把这个 `.mvsv` 删掉（`INPUT_SYNC_DELETE=1`，见工作流「同步配置到 Supabase」步骤），好让队列
+头部前移、后续证券也能被同步到；未命中（已留 `Verify/MisMatch/` 留痕）与同步失败的件一律保留。
 
 ## 4 任务脚本入参
 

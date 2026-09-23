@@ -123,8 +123,9 @@ jobs:
 
       # 采集步骤的产物落在 quote-meta 的 Verify/Success|Fail/{market}/；本步骤做它的下游：
       # 把 Success 下证券（文件名去掉扩展名即 usc）的查询参数回填进 Supabase 的两张配置表
-      # （finv_quote_futu_collect / finv_quote_secu），并把 flag_enable 置 '1' 让新配置生效。
-      # 更新规则、抽样口径、未命中留痕与退出码见脚本模块 docstring：
+      # （finv_quote_futu_collect / finv_quote_secu），把 flag_enable 置 '1' 让新配置生效，
+      # 再把已同步完成的 .mvsv 删掉（INPUT_SYNC_DELETE=1）让清单头部前移。
+      # 更新规则、抽样口径、未命中留痕、产物消费与退出码见脚本模块 docstring：
       #   .github/Python/VerifyQuoteMinuteSyncConfig.py
       #
       # 本轮做多少行 = 本批 usc（与采集步骤同口径，且必须已在 Success 下）
@@ -157,8 +158,12 @@ jobs:
           # 表里缺行时是否允许新建：默认关闭 —— 缺行的证券只写 Verify/MisMatch/{usc}.txt 留痕，
           # 由人工决定是否补录（脚本会把插入的行单独列出，开启后务必复核运行摘要）
           INPUT_SYNC_ALLOW_INSERT: '0'
-          # 只打印待执行 SQL：dry_run 触发时自动继承，避免「只本地生成、不提交仓库」的演练
-          # 反而真的改动线上配置表
+          # 同步完成后是否删除对应的 Verify/Success/{market}/{usc}.mvsv：置 1 让清单头部前移
+          # （否则每轮都从同一批文件开始，队列后面的记录永远轮不上）。删除走 Contents API，
+          # 逐个文件一次提交；未命中（已留痕）与写库失败的记录一律保留，dry_run 时只列出不删
+          INPUT_SYNC_DELETE: '1'
+          # 只打印待执行 SQL 与待删文件：dry_run 触发时自动继承，避免「只本地生成、不提交仓库」
+          # 的演练反而真的改动线上配置表或删掉产物
           INPUT_SYNC_DRY_RUN: ${{ inputs.dry_run || inputs.sync_dry_run }}
           PYTHONIOENCODING: utf-8
         run: |
@@ -166,8 +171,8 @@ jobs:
           code=0
           python3 .github/Python/VerifyQuoteMinuteSyncConfig.py || code=$?
           if [ "$code" -eq 0 ]; then
-            echo "✅ 配置同步结束（未命中记录已留痕到 Verify/MisMatch/，详见步骤日志与运行摘要）"
+            echo "✅ 配置同步结束（已同步完成的 .mvsv 已删除，未命中记录已留痕到 Verify/MisMatch/，详见步骤日志与运行摘要）"
           else
-            echo "::error::配置同步失败，退出码 $code（2=任务级错误：凭据缺失/清单列举失败；1=写库或留痕提交失败）"
+            echo "::error::配置同步失败，退出码 $code（2=任务级错误：凭据缺失/清单列举失败/开了删除却没有令牌；1=写库、留痕提交或删除 .mvsv 失败）"
           fi
           exit "$code"

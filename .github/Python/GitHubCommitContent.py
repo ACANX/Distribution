@@ -14,7 +14,7 @@ GitHubCommitContent —— 单文件 GitHub Contents API 提交库（纯标准�
     - 本文件是纯函数库，没有命令行入口；通过“同目录下的其他 Python 脚本” import 调用；
     - import 时不发起任何网络请求、无全局副作用，可放心在脚本头部导入；
     - 公开函数：commit_content（提交文本）、commit_content_file（提交本地文件）、
-      load_owner_repo_from_git_config（解析仓库身份）；
+      delete_content（删除文件）、load_owner_repo_from_git_config（解析仓库身份）；
     - 结果一律以 dict 返回，调用方判断 success 即可分流；失败不抛异常；
     - 调用过程中的诊断信息走 stderr，不会污染调用方 print 的结果流；
     - 纯标准库实现（urllib / json / base64 / configparser 等），可直接拷到任何
@@ -102,6 +102,16 @@ $env:GITHUB_COMMIT_TOKEN = "ghp_你的Token"；严禁把令牌写进任何源码
     else:                                      # 200 → 更新成功
         print("已更新 status/last_run.json")
 
+【示例 7：删除仓库中的文件（读取→清理二合一，常用于消费完的产物）】
+
+    from GitHubCommitContent import delete_content
+
+    # 未传 sha 时内部先 GET 查一次；文件本就不存在时 success=True、http_status=404
+    result = delete_content("Verify/Success/HK/00700.mvsv", branch="quote-meta",
+                            commit_msg="Consumed 00700.mvsv")
+    if not result["success"]:
+        print("删除失败:", result["message"])
+
 【环境要求】
     - Python 3.8+，仅标准库，不依赖 requests 等任何第三方包；
     - 可直连 api.github.com（443）。
@@ -117,6 +127,8 @@ $env:GITHUB_COMMIT_TOKEN = "ghp_你的Token"；严禁把令牌写进任何源码
 | branch      | 1) 参数 branch 显式传入         2) 默认 "latest"          |      |
 | commit_msg  | 1) 参数 commit_msg 显式传入                              | 默认 |
 |             | 2) 默认 "UpdatedAt@<本地当前时间ISO>"                    | "UpdatedAt@now" |
+| sha         | delete_content 专用：1) 参数 sha 显式传入（省一次 GET）   | 见【行为语义】 |
+|             | 2) 内部 GET contents 查询当前 sha                        |      |
 | api_base    | 参数 api_base 显式传入，默认 https://api.github.com/repos | REST 仓库集合根 |
 
 【.git 解析规则】（load_owner_repo_from_git_config 实现）
@@ -160,6 +172,19 @@ $env:GITHUB_COMMIT_TOKEN = "ghp_你的Token"；严禁把令牌写进任何源码
        - success=False 时 message 为失败原因（令牌缺失 / .git 解析失败 / 网络错误 /
          GitHub 返回的错误 message 原文等），http_status 为 GitHub 状态码或 None。
 
+    D. delete_content 的删除（DELETE /repos/{owner}/{repo}/contents/{path}，body JSON）：
+       {
+         "message": commit_msg,
+         "sha": <文件当前 blob sha，必填>,
+         "branch":  branch,
+         "author":    { "name": "github-bot", "email": "github-bot@users.noreply.github.com" },
+         "committer": { "name": "github-bot", "email": "github-bot@users.noreply.github.com" }
+       }
+       - sha 未显式传入时先 GET contents 查一次；查得 404 → 文件本就不存在，
+         按成功返回（success=True、http_status=404），不制造无意义失败；
+       - 显式传入的 sha 与远端当前 sha 不一致时 GitHub 返回 409，属正常竞争结果，按失败返回；
+       - 成功返回 HTTP 200。
+
 五、安全红线（AGENT 必须遵守）
 ----------------------------------------------------------------------------------------
     - 令牌只允许经环境变量 GITHUB_COMMIT_TOKEN（或函数参数）注入；
@@ -174,7 +199,7 @@ $env:GITHUB_COMMIT_TOKEN = "ghp_你的Token"；严禁把令牌写进任何源码
     - 文件内容按 UTF-8 编码后再 Base64；content 参数可为多行字符串；
     - branch 不存在时 GitHub 会返回 422 错误（message 中说明 ref 不存在）；
     - 提交相同 sha 的文件会以 commit_msg 生成新 commit；提交未变更内容也会生成空 commit
-      （GitHub 不拒绝）；删除文件不属本工具范围；
+      （GitHub 不拒绝）；删除文件走 delete_content（DELETE 需携带文件当前 sha）；
     - 大量循环提交时注意 GitHub API 限流（默认 5000 次/小时），建议批量场景自行控制频率；
     - Windows 控制台可能为 GBK 编码：调用脚本 print 中文结果时如乱码，请设置环境变量
       PYTHONIOENCODING=utf-8。
@@ -603,6 +628,122 @@ def commit_content_file(path_key, local_file, branch=None, commit_msg=None,
     return commit_content(path_key, content, branch=branch, commit_msg=commit_msg,
                           owner=owner, repo=repo, token=token,
                           api_base=api_base, timeout=timeout)
+
+
+def delete_content(path_key, branch=None, commit_msg=None, sha=None,
+                   owner=None, repo=None, token=None,
+                   api_base=DEFAULT_API_BASE, timeout=30):
+    """删除仓库中的指定文件（Contents API，无第三方依赖）
+
+    行为要点：DELETE 与 PUT 一样需要文件当前 sha；未显式传入时先 GET 查一次（404 视为
+    已经不存在，直接按成功返回）。默认分支 "latest"、默认提交信息 "DeletedAt@<当前本地时间>"、
+    author/committer 固定为通用 bot 身份 github-bot；失败不抛异常，一律以返回 dict 表示。
+
+    :param path_key: 仓库内文件路径（可含目录，如 "docs/x.md"）；传原始未编码形式
+    :param branch: 目标分支；None 时默认 "latest"
+    :param commit_msg: 提交说明；None 时默认 "DeletedAt@<当前本地时间ISO>"
+    :param sha: 文件当前 blob sha；None 时内部先 GET 查询（调用方已从目录树拿到时可省一次请求）
+    :param owner: 仓库属主；None 时从本脚本所在仓库 .git/config 解析（可被显式值覆盖）
+    :param repo: 仓库名；None 时从本脚本所在仓库 .git/config 解析（可被显式值覆盖）
+    :param token: 访问令牌；None 时读取环境变量 GITHUB_COMMIT_TOKEN（二者都缺则失败）
+    :param api_base: GitHub API 仓库根，默认 https://api.github.com/repos
+    :param timeout: 单次 HTTP 请求超时秒数，默认 30
+    :return: 固定结构 dict：
+             { "success": bool, "message": str|None, "path": str, "http_status": int|None }
+             - success=False 时 message 为失败原因（含 GitHub 返回的错误 message 原文）；
+             - 删除成功 http_status=200；文件本就不存在时 http_status=404 且 success=True；
+             - 函数内部不抛网络/HTTP 异常，一切失败以 dict 形式返回。
+    """
+    def fail(msg):
+        """构造失败结果并输出诊断信息到 stderr
+
+        :param msg: 失败原因
+        :return: 失败结果 dict
+        """
+        _warn(msg)
+        return {"success": False, "message": msg, "path": path_key, "http_status": None}
+
+    # 1) Token：参数优先，其次环境变量 GITHUB_COMMIT_TOKEN
+    tok = (token or "").strip()
+    if not tok:
+        tok = os.environ.get(ENV_TOKEN, "").strip()
+    if not tok:
+        return fail("❌ 请设置环境变量 %s 或者在参数 token 中传入令牌" % ENV_TOKEN)
+
+    # 2) owner/repo：参数优先，其次从本仓库 .git 配置解析
+    if not owner or not repo:
+        auto_owner, auto_repo = load_owner_repo_from_git_config()
+        if not owner:
+            owner = auto_owner
+        if not repo:
+            repo = auto_repo
+    if not owner or not repo:
+        return fail("❌ 未能从本仓库 .git/config 解析出 github.com 的 owner/repo，"
+                    "请显式传入 owner/repo 参数")
+
+    # 3) 默认值：branch→"latest"，commit_msg→"DeletedAt@"+当前本地时间
+    target_branch = branch or DEFAULT_BRANCH
+    now_iso = datetime.datetime.now().isoformat()
+    target_msg = commit_msg or ("DeletedAt@" + now_iso)
+
+    # 4) 组装 contents URL（path_key 仅保留 "/"，其余字符 URL 编码）
+    api_base = (api_base or DEFAULT_API_BASE).rstrip("/")
+    contents_url = "%s/%s/%s/contents/%s" % (
+        api_base, owner, repo, urllib.parse.quote(path_key, safe="/"))
+
+    # 5) 取 sha：DELETE 必须携带当前 sha（未显式传入时查一次）
+    target_sha = (sha or "").strip()
+    if not target_sha:
+        status, text, err = _request(
+            "GET",
+            "%s?ref=%s" % (contents_url, urllib.parse.quote(target_branch, safe="")),
+            _auth_headers(tok), None, timeout)
+        if err:
+            return fail("删除前查询 sha 失败: %s" % err)
+        if status == 404:
+            # 文件本就不存在：结果与「已删除」等价，不当作失败
+            return {"success": True, "message": "文件不存在，无需删除",
+                    "path": path_key, "http_status": 404}
+        parsed = _parse_json(text)
+        if status != 200 or not isinstance(parsed, dict) or not parsed.get("sha"):
+            return fail("删除前查询 sha 失败: HTTP %s: %s"
+                        % (status, (text or "").strip().replace("\n", " ")[:300]))
+        target_sha = parsed["sha"]
+
+    # 6) DELETE 提交
+    body_json = {
+        "message": target_msg,
+        "sha": target_sha,
+        "branch": target_branch,
+        "author": {"name": BOT_NAME, "email": BOT_EMAIL},
+        "committer": {"name": BOT_NAME, "email": BOT_EMAIL},
+    }
+    status, text, err = _request(
+        "DELETE", contents_url,
+        _auth_headers(tok, with_body=True),
+        json.dumps(body_json, ensure_ascii=False).encode("utf-8"),
+        timeout,
+    )
+    if err:
+        return fail("删除失败: %s" % err)
+
+    # 7) 成功判定：HTTP 2xx 且响应顶层无 "status" 与 "message"
+    parsed = _parse_json(text)
+    # 7) 成功判定：HTTP 2xx 且响应顶层无 "status" 与 "message"
+    if status is not None and 200 <= status < 300:
+        if parsed is None or not isinstance(parsed, dict) \
+                or (not parsed.get("status") and not parsed.get("message")):
+            return {"success": True, "message": None, "path": path_key, "http_status": status}
+        # 2xx 但响应带 message/status（GitHub 的异常应答形态）→ 按失败处理
+        reason = parsed.get("message") or ("HTTP %s" % status)
+    else:
+        # 非 2xx：优先取 GitHub 错误体中的 message 原文
+        if isinstance(parsed, dict) and parsed.get("message"):
+            reason = parsed["message"]
+        else:
+            snippet = (text or "").strip().replace("\n", " ")[:300]
+            reason = "HTTP %s: %s" % (status, snippet if snippet else "空响应体")
+    return {"success": False, "message": reason, "path": path_key, "http_status": status}
 
 
 if __name__ == "__main__":
