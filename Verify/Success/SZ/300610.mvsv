@@ -4,7 +4,7 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 1335
-# 采集时间 : "2026-09-23 15:51:34"
+# 采集时间 : "2026-09-23 15:54:14"
 # 证券代码 : 300610
 # 市场 : SZ
 # 备注 : "汇总: K线=1335|首根=1789608600|末根=1790148600|昨收=10140"
@@ -14,7 +14,7 @@
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 1335
-# FetchTime : "2026-09-23 15:51:34"
+# FetchTime : "2026-09-23 15:54:14"
 # SecuCode : 300610
 # Market : SZ
 # 以下为本程序追加的元信息（读取方可忽略）
@@ -36,7 +36,7 @@
 # 昨收价 : 10140
 # 任务脚本 : VerifyQuoteMinute.py
 # 任务版本 : 1
-# 采集时刻 : 2026-09-23 15:51:34
+# 采集时刻 : 2026-09-23 15:54:14
 
 1789608600|20260917|093000|10140|10.15|||10200|103530|0.01|0.10
 1789608660|20260917|093100|10.15|10.06|||118400|1193171|-0.08|-0.79
