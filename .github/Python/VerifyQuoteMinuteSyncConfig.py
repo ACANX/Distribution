@@ -285,8 +285,8 @@ RETRYABLE_STATUS = (429, 500, 502, 503, 504)
 
 # 更新规则（字段口径见模块 docstring 第四节）
 FUTU_TABLE = "finv_quote_collect_futu"
-FUTU_KEY = "stockId"
-FUTU_FIELDS = (("quote_market", "quoteMarket"), ("type_symbol", "typeSymbol"),
+FUTU_KEY = "usc"
+FUTU_FIELDS = (("usc", "usc"),("quote_market", "quoteMarket"), ("type_symbol", "typeSymbol"),
                ("futu_symbol", "futuSymbol"), ("marketType", "marketType"),
                ("marketCode", "marketCode"), ("instrumentType", "instrumentType"),
                ("subInstrumentType", "subInstrumentType"))
@@ -297,7 +297,7 @@ SECU_FIELDS = (("region", "secuRegion"), ("market", "secuMarket"),
                ("name_sc", "nameSc"), ("type_secu", "typeSecu"))
 
 #: 映射记录涉及的字段（解析输出、MisMatch 留痕、必要字段校验共用同一口径）
-RECORD_FIELDS = ("stockId", "typeSymbol", "quoteMarket", "futuSymbol", "marketType",
+RECORD_FIELDS = ("usc", "stockId", "typeSymbol", "quoteMarket", "futuSymbol", "marketType",
                  "marketCode", "instrumentType", "subInstrumentType", "nameSc",
                  "typeSecu", "secuRegion", "secuMarket")
 
