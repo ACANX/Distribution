@@ -1,4 +1,4 @@
-name: VerifyQuoteMinute
+name: quote-meta.VerifyQuoteMinute
 
 # 触发方式
 #   1) workflow_dispatch —— 主通道：由外部触发器（调度器 / 人工）指定 usc 调起，参数经
