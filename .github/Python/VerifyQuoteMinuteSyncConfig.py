@@ -13,10 +13,12 @@
     INPUT_SYNC_BATCH_SIZE        单轮最多同步多少条（默认 50，0 = 不限）
     INPUT_SYNC_SAMPLE_LIMIT      从 Verify/Success/ 清单头部最多补齐多少条（默认 47）
     INPUT_SYNC_ALLOW_INSERT      缺行的证券是否允许新建（默认 false = 只留痕）
-    INPUT_SYNC_DRY_RUN           置真则只打印将要执行的 SQL，不写库、不提交
+    INPUT_SYNC_DELETE            同步完成的记录，是否删除其 Verify/Success/{market}/{usc}.mvsv
+                                 （默认 false；开启后逐个文件提交删除，见第九节）
+    INPUT_SYNC_DRY_RUN           置真则只打印将要执行的 SQL 与待删文件，不写库、不提交、不删除
     SUPABASE_PROJECT_REF         Supabase 项目引用（必填）
     SUPABASE_KEY                 Supabase API 密钥（service-role；必填，不落日志）
-    GITHUB_COMMIT_TOKEN          MisMatch 留痕提交用（约定变量名见 GitHubCommitContent.py）
+    GITHUB_COMMIT_TOKEN          MisMatch 留痕提交、.mvsv 删除用（约定变量名见 GitHubCommitContent.py）
 
 本文档分节：
     一、工具定位        为什么需要这一步、与 VerifyQuoteMinute.py 的分工
@@ -27,7 +29,7 @@
     六、未命中与插入    缺行时留痕还是新建（INPUT_SYNC_ALLOW_INSERT）、新增行如何被单独列出
     七、日志与摘要      逐条字段级日志、dry-run 的 SQL 计划、Actions 步骤摘要
     八、退出码
-    九、尚未实现        同步成功后的删除（留位，暂不开启）
+    九、消费产物        同步完成后删除对应的 .mvsv（INPUT_SYNC_DELETE），让清单头部前移
 
 --------------------------------------------------------------------------------
 一、工具定位
@@ -51,7 +53,7 @@ instrumentType / subInstrumentType / typeSecu / secuRegion / secuMarket），且
        Verify/Success/ 下**（采失败的证券不该被 enable）；不在 Success 下的会被剔除并记日志。
     ③ 补齐抽样：从 Verify/Success/ 清单**按路径升序取前 N 个**（N = INPUT_SYNC_SAMPLE_LIMIT，
        默认 47），与 ② 合起来凑成一批（默认 50 条）。取头部是刻意的确定性行为：结果可复现、
-       日志可追溯；后续开启「同步成功即删除产物」后，每轮的头部会自然前移。
+       日志可追溯；同步完成即删除产物（第九节）后，每轮的头部会自然前移。
     ④ 目标数上限 INPUT_SYNC_BATCH_SIZE（默认 50）：本批已超过上限时不再补齐。
 
 一轮要写多少行，是「本批 ∪ 清单头部」去重后的结果，不是全量重刷。
@@ -195,10 +197,26 @@ INPUT_SYNC_ALLOW_INSERT 置真时，缺行的证券改为**新建**（不算未�
     2  任务级错误（凭据缺失、映射产物不可用、目录列举失败、参数非法）
 
 --------------------------------------------------------------------------------
-九、尚未实现
+九、消费产物
 --------------------------------------------------------------------------------
-「同步成功后删除对应的 Verify/Success/{market}/{usc}.mvsv」**当前刻意不做**（先只读不删）。
-留待后续单独评估：删除会改变产物台账，需要一并考虑 Fail 件回写与 MisMatch 的关系。
+Verify/Success/ 下的 .mvsv 是本脚本的**输入队列**：每轮固定从清单头部取 N 个补齐，若文件用完
+不删，下一轮取到的还是同一批（头部永远是那几十个已同步好的证券），队列后面的记录永远轮不上。
+故同步完成后要把已消费的文件删掉，让头部自然前移 —— 由 INPUT_SYNC_DELETE 控制（默认关，
+工作流里已置 1），删除走 GitHub Contents API（GitHubCommitContent.delete_content）。
+
+删除判据（**同步完成**即删，包含「本来就已经一致、本轮无需变更」的记录，否则它们同样滞留在队头）：
+
+    删：映射可用 → 两表都已写入成功（含「已一致、无需变更」）→ 该记录本轮没有任何失败
+    留：未命中（已写 MisMatch 留痕）、所在 upsert 块失败、dry-run、INPUT_SYNC_DELETE 未开启
+    留：清单里找不到对应文件（理论上不会发生，只在日志里说明）
+
+删除是**逐个文件一次提交**（与采集脚本的 "Verify xxx.mvsv" 同风格，消息为 "Consumed xxx.mvsv"）：
+sha 在目录列举时就已随路径一起取回，直接用于 DELETE，不必再查一次；shas 失配（文件被人抢先改过）
+时 GitHub 返 409，按失败记录、不误删。单个文件删除失败不阻塞其余文件，也不会回滚已写入的库行 ——
+库是事实来源，文件删不掉只会让该条下一轮再同步一次（幂等，无害）。开启了删除却没有仓库令牌时
+直接退出 2（避免「以为删了其实没删」而队列永远不前进）。
+
+⚠️ dry-run 只列出待删文件，不执行删除；INPUT_SYNC_DELETE 未开启时同样只报告「有多少个可消费」。
 """
 
 import datetime
@@ -238,6 +256,10 @@ DEFAULT_PROBABILITY = 100
 DEFAULT_BATCH_SIZE = 50
 DEFAULT_SAMPLE_LIMIT = 47
 DEFAULT_ALLOW_INSERT = False
+DEFAULT_DELETE = False      # 同步完成后删除 .mvsv（见 docstring 第九节）；工作流里已置 1
+
+# 消费 .mvsv 时的提交信息（逐个文件一次提交，与采集脚本 "Verify xxx.mvsv" 同风格）
+DELETE_COMMIT_MSG = "Consumed %s"
 
 # Supabase / PostgREST
 ENV_SUPABASE_REF = "SUPABASE_PROJECT_REF"
@@ -612,10 +634,12 @@ class SupabaseClient:
 
 
 class RepoAccess:
-    """GitHub Contents API 的最小封装：递归列目录 + 单文件提交。
+    """GitHub Contents API 的最小封装：递归列目录 + 单文件提交 + 单文件删除。
 
-    复用同目录 GitHubCommitContent.py 的 _request / _auth_headers / commit_content_file，
-    与仓库内其它脚本保持同一套鉴权与提交口径。
+    复用同目录 GitHubCommitContent.py 的 _request / _auth_headers / commit_content_file /
+    delete_content，与仓库内其它脚本保持同一套鉴权与提交口径。
+    列举一律返回 [(仓库路径, blob sha)]：sha 是删除文件时必须回传的版本凭据，
+    顺手从目录树带回来，省掉删除前逐文件再查一次的开销。
     """
 
     def __init__(self, branch):
@@ -669,9 +693,10 @@ class RepoAccess:
             page += 1
 
     def _listByTree(self):
-        """用 Git Trees API 一次取回整棵目录树（只取 blob 路径）。
+        """用 Git Trees API 一次取回整棵目录树（只取 blob），返回 [(路径, sha)]。
 
         比逐目录列举快得多（1 次请求），是首选路径；返回 None 表示不可用、需降级。
+        sha 一并带回来：删除文件时 Contents API 必须带上它，免得再逐文件查一次。
         """
         url = "%s/%s/%s/git/trees/%s?recursive=1" % (
             self.apiBase, self.owner, self.repo, urllib.parse.quote(self.branch, safe=""))
@@ -688,11 +713,11 @@ class RepoAccess:
         if data.get("truncated"):
             print("  [告警] Git Trees 响应被截断（仓库树过大），降级为逐目录列举", flush=True)
             return None
-        return [item.get("path") for item in data["tree"]
+        return [(item.get("path"), item.get("sha")) for item in data["tree"]
                 if isinstance(item, dict) and item.get("type") == "blob" and item.get("path")]
 
     def _listByContents(self, root):
-        """逐目录递归列举（无需 Trees API 权限时的兜底路径）。"""
+        """逐目录递归列举（无需 Trees API 权限时的兜底路径），返回 [(路径, sha)]。"""
         found, pending = [], [root]
         while pending:
             path = pending.pop(0)
@@ -706,17 +731,18 @@ class RepoAccess:
                 if kind == "dir":
                     pending.append(entryPath)
                 elif kind == "file" and entryPath.endswith(MVSV_SUFFIX):
-                    found.append(entryPath)
+                    found.append((entryPath, entry.get("sha")))
         return found
 
     def listMvsv(self, root):
-        """递归列举 root 下全部 .mvsv，返回按仓库路径升序排序的路径列表。"""
+        """递归列举 root 下全部 .mvsv，返回按仓库路径升序的 [(路径, blob sha)]。"""
         prefix = root.rstrip("/") + "/"
-        paths = self._listByTree()
-        if paths is None:
-            paths = self._listByContents(root)
-        found = sorted(path for path in paths
-                       if path.startswith(prefix) and path.endswith(MVSV_SUFFIX))
+        entries = self._listByTree()
+        if entries is None:
+            entries = self._listByContents(root)
+        found = sorted(((path, sha) for path, sha in entries
+                        if path.startswith(prefix) and path.endswith(MVSV_SUFFIX)),
+                       key=lambda item: item[0])
         if not found:
             raise TaskError("目录 %s@%s 下一个 .mvsv 都没有（路径口径是否变了？）" % (root, self.branch))
         return found
@@ -726,11 +752,22 @@ class RepoAccess:
         return self.lib.commit_content_file(path, localFile, branch=self.branch,
                                             commit_msg=message, owner=self.owner, repo=self.repo)
 
+    def deleteFile(self, path, sha, message):
+        """删除产物分支上的单个文件（Contents API DELETE）；返回结果 dict。
+
+        调用方已从目录树拿到 sha，故无需再查一次；sha 对不上（被人抢先改过）时 GitHub 返 409，
+        按失败返回、由调用方记录，不会误删。
+        """
+        return self.lib.delete_content(path, branch=self.branch, commit_msg=message,
+                                       sha=sha, owner=self.owner, repo=self.repo)
+
 
 def localSuccessFiles(root):
     """本地工作树兜底：无令牌/离线时按同一口径扫描检出目录。
 
     仅用于本机自测与线上列举不可用时的降级；线上以 Contents API 列举为准。
+    与线上口径一致返回 [(仓库路径, sha)]，本地拿不到 blob sha，故 sha 一律为 None
+    （删除时由 GitHubCommitContent 现查一次，见其 delete_content）。
     """
     base = os.path.join(os.getcwd(), root.replace("/", os.sep))
     if not os.path.isdir(base):
@@ -740,7 +777,7 @@ def localSuccessFiles(root):
         for name in fileNames:
             if name.endswith(MVSV_SUFFIX):
                 rel = os.path.relpath(os.path.join(dirPath, name), os.getcwd())
-                found.append(rel.replace(os.sep, "/"))
+                found.append((rel.replace(os.sep, "/"), None))
     found.sort()
     return found
 
@@ -1093,6 +1130,79 @@ def applyBatches(client, batches):
     return written, inserted, failed
 
 
+def failedUscs(batches, failed):
+    """把「块级写库失败」折算成 usc 集合，返回 (usc 集合, 折算不出的主键)。
+
+    失败是按块记录的（表名 + 该块的主键），而要不要删文件是按 usc 判断的，故用 batch["uscOf"]
+    （主键 → usc）换算回来。折算不出的主键理论上不会出现；真出现了就保守处理 —— 该表本轮
+    一并不删，见 consumeSuccess 的调用方。
+    """
+    lookup = {batch["table"]: batch["uscOf"] for batch in batches}
+    blocked, orphan = set(), []
+    for table, _action, keys, _reason in failed:
+        byKey = lookup.get(table, {})
+        for key in keys:
+            usc = byKey.get(cell(key))
+            if usc:
+                blocked.add(usc)
+            else:
+                orphan.append((table, cell(key)))
+    return blocked, orphan
+
+
+def planConsumption(rowPlans, pendingMismatch, earlyMismatch, blockedUsc, sourceOf, shaOf):
+    """定「哪些 .mvsv 本轮删、哪些留」，返回 (待删, 保留)。
+
+    :param rowPlans: [(usc, record, plans)]，已算完差异的行（含「无需变更」的行）。
+    :param pendingMismatch: [(usc, record, misses)]，算差异时判为未命中的行。
+    :param earlyMismatch: [(usc, record, misses)]，映射不可用、连差异都没算的行。
+    :param blockedUsc: 写库失败涉及的 usc（按块折算而来，见 failedUscs）。
+    :param sourceOf: {usc: 仓库路径}；shaOf: {usc: blob sha}。
+    :return: (consumed, retained)：consumed = [(usc, 路径, sha)]；retained = [(usc, 原因)]。
+
+    判据见 docstring 第九节：**同步完成即删** —— 包含「本来就已经一致、本轮无需变更」的行，
+    否则它们同样滞留在队头、把队列卡死；未命中（已留痕）与写库失败的一律保留。
+    """
+    reasonOf = {}
+    for usc, _record, _misses in pendingMismatch:
+        reasonOf[usc] = "未命中，已留痕到 %s/" % MISMATCH_DIR
+    for usc in sorted(blockedUsc):
+        reasonOf.setdefault(usc, "写库失败，须保留待下一轮重试")
+    consumed = []
+    retained = [(usc, "映射不可用，已留痕到 %s/" % MISMATCH_DIR)
+                for usc, _record, _misses in earlyMismatch]
+    for usc, _record, _plans in rowPlans:
+        if usc in reasonOf:
+            retained.append((usc, reasonOf[usc]))
+        elif not sourceOf.get(usc):
+            retained.append((usc, "清单里找不到对应文件"))
+        else:
+            consumed.append((usc, sourceOf[usc], shaOf.get(usc)))
+    return consumed, retained
+
+
+def consumeSuccess(repoAccess, entries, failures):
+    """逐个删除已同步完成的 .mvsv，返回 (已删, 删除失败) 计数。
+
+    :param entries: [(usc, 仓库路径, blob sha)]，sha 为 None 时由 delete_content 现查。
+    :param failures: 调用方的失败清单，删除失败按 (路径, 原因) 追加进去。
+    逐个文件一次提交：一个失败不影响其余文件；库行已写入即不再回滚（见 docstring 第九节）。
+    """
+    done, bad = 0, 0
+    for usc, path, sha in entries:
+        result = repoAccess.deleteFile(path, sha, DELETE_COMMIT_MSG % os.path.basename(path))
+        if result.get("success"):
+            done += 1
+            print("      ⤷ 已消费 %s（usc=%s，HTTP %s）"
+                  % (path, usc, result.get("http_status")), flush=True)
+        else:
+            bad += 1
+            failures.append((path, result.get("message") or "删除失败"))
+            print("      ✗ 消费 %s 失败（usc=%s）：%s（该文件下一轮会再同步一次）"
+                  % (path, usc, result.get("message")), flush=True)
+    return done, bad
+
+
 def archiveMismatch(repoAccess, usc, record, source, misses, outDir, dryRun, failures):
     """把未命中记录写成本地文件并提交到产物分支；提交失败记入 failures。"""
     content = mismatchText(usc, record, source, misses, nowChina())
@@ -1113,16 +1223,20 @@ def archiveMismatch(repoAccess, usc, record, source, misses, outDir, dryRun, fai
         print("      ✗ 留痕 %s 提交失败：%s" % (remote, result.get("message")), flush=True)
 
 
-def stepSummary(stats, branch, dryRun, probability, batchSize, sampleLimit):
+def stepSummary(stats, branch, dryRun, probability, batchSize, sampleLimit, deleteEnabled):
     """写 Actions 步骤摘要（未在 Actions 中运行则跳过）。"""
     path = env("GITHUB_STEP_SUMMARY")
     if not path:
         return
+    if deleteEnabled:
+        consumeNote = "dry-run 只列出，未删除" if dryRun else "已从 %s 删除，头部随之前移" % SUCCESS_DIR
+    else:
+        consumeNote = "未开启 INPUT_SYNC_DELETE，下一轮会再同步一次"
     if not stats["gated"]:
         lines = ["## VerifyQuoteMinute 配置同步（Supabase）", "",
                  "| 项 | 值 |", "|---|---|",
                  "| 概率闸门 | 未命中（%d%%） |" % probability,
-                 "| 本轮动作 | 无（不读库、不写库、不留痕） |"]
+                 "| 本轮动作 | 无（不读库、不写库、不留痕、不删文件） |"]
     else:
         lines = [
             "## VerifyQuoteMinute 配置同步（Supabase）", "",
@@ -1137,6 +1251,8 @@ def stepSummary(stats, branch, dryRun, probability, batchSize, sampleLimit):
             "| ⤷ 其中新建 | %d | 表内原无此行（已补 dt_create；须人工复核） |" % stats["inserted"],
             "| 写库失败 | %d | 见步骤日志中的 ✗ 行 |" % stats["failed"],
             "| 无需变更 | %d | 行×表：该表该行已完全一致，不入批 |" % stats["skippedRows"],
+            "| 消费 .mvsv | %d | %s |" % (stats["deleted"], consumeNote),
+            "| ⤷ 删除失败 | %d | 该条下一轮会再同步一次（幂等） |" % stats["deleteFailed"],
             "| 告警 | %d | 不阻塞：如 sid 与 usc 不符、主键重复 |" % len(stats["warns"]),
             "| 未命中留痕 | %d | Verify/MisMatch/{usc}.txt |" % stats["mismatched"],
             "| ⤷ 映射无记录 | %d | usc 不在 UscFutuMapping.jsonl.idx 中 |" % stats["indexMiss"],
@@ -1168,6 +1284,7 @@ def main():
     batchSize = envInt("INPUT_SYNC_BATCH_SIZE", DEFAULT_BATCH_SIZE, minimum=0)
     sampleLimit = envInt("INPUT_SYNC_SAMPLE_LIMIT", DEFAULT_SAMPLE_LIMIT, minimum=0)
     allowInsert = envFlag("INPUT_SYNC_ALLOW_INSERT", DEFAULT_ALLOW_INSERT)
+    deleteEnabled = envFlag("INPUT_SYNC_DELETE", DEFAULT_DELETE)
     dryRun = envFlag("INPUT_SYNC_DRY_RUN")
     watchlist = env("INPUT_WATCHLIST", os.path.join(SCRIPT_DIR, "VerifyQuoteMinuteWatchlist.txt"))
 
@@ -1178,12 +1295,15 @@ def main():
     print("抽样参数   概率闸门 %d%%｜批量上限 %d｜头部补齐上限 %d｜表内缺行 %s"
           % (probability, batchSize, sampleLimit, "允许新建" if allowInsert else "只留痕"),
           flush=True)
+    print("文件消费   %s" % ("同步完成的记录删除其 .mvsv（清单头部随之前移）" if deleteEnabled
+                             else "未开启 INPUT_SYNC_DELETE：.mvsv 保留，下一轮会再同步一次"),
+          flush=True)
     print("=" * 78, flush=True)
 
     stats = {"gated": False, "total": 0, "batchCount": 0, "sampleCount": 0, "written": 0,
              "inserted": 0, "insertedKeys": [], "skippedRows": 0, "failed": 0, "mismatched": 0,
              "indexMiss": 0, "recordMiss": 0, "rowMiss": 0, "insertMiss": 0, "warns": [],
-             "requests": 0,
+             "requests": 0, "deleted": 0, "deleteFailed": 0,
              "dropped": [], "failures": []}
 
     # ① 概率闸门：未命中则本轮什么都不做
@@ -1193,7 +1313,7 @@ def main():
           % (roll, "<" if stats["gated"] else ">=", probability,
              "命中，继续执行" if stats["gated"] else "未命中，本轮不执行"), flush=True)
     if not stats["gated"]:
-        stepSummary(stats, branch, dryRun, probability, batchSize, sampleLimit)
+        stepSummary(stats, branch, dryRun, probability, batchSize, sampleLimit, deleteEnabled)
         return RETURN_OK
 
     # ② 本批 usc（与采集脚本同口径：输入优先，其次清单文件）
@@ -1208,6 +1328,10 @@ def main():
     mapping = Mapping()
     print("映射表     %s" % mapping.describe(), flush=True)
     repoAccess = RepoAccess(branch)
+    # 开了删除却没有令牌：当场退出 2，免得「以为删了其实没删」而清单头部永远不前进
+    if deleteEnabled and not dryRun and not repoAccess.usable:
+        raise TaskError("已开启 INPUT_SYNC_DELETE，但缺少仓库身份或令牌（GITHUB_COMMIT_TOKEN），"
+                        "无法删除 .mvsv；请提供令牌或把 INPUT_SYNC_DELETE 置 0")
     successPaths = None
     if repoAccess.usable:
         try:
@@ -1218,12 +1342,23 @@ def main():
         successPaths = localSuccessFiles(SUCCESS_DIR)
         if successPaths is None:
             raise TaskError("既无法列举 %s@%s，本地工作树也没有该目录" % (SUCCESS_DIR, branch))
-        print("  [告警] 本次改用本地工作树的 %s（共 %d 个 .mvsv；线上列举不可用）"
-              % (SUCCESS_DIR, len(successPaths)), flush=True)
-    successUscs = [os.path.basename(path)[:-len(MVSV_SUFFIX)] for path in successPaths]
-    sourceOf = {os.path.basename(path)[:-len(MVSV_SUFFIX)]: path for path in successPaths}
-    print("Success 清单 %s@%s 共 %d 个 .mvsv（按路径升序）"
-          % (SUCCESS_DIR, branch, len(successUscs)), flush=True)
+        print("  [告警] 本次改用本地工作树的 %s（共 %d 个 .mvsv；线上列举不可用；"
+              "该路径下无 blob sha，删除时逐个现查）" % (SUCCESS_DIR, len(successPaths)), flush=True)
+    # 同一 usc 出现在多个市场目录时按路径升序取第一个（与 successUscs 同序，日志因此可复现）
+    successUscs, sourceOf, shaOf, dupUscs = [], {}, {}, []
+    for path, sha in successPaths:
+        usc = os.path.basename(path)[:-len(MVSV_SUFFIX)]
+        if usc in sourceOf:
+            dupUscs.append(usc)
+            continue
+        successUscs.append(usc)
+        sourceOf[usc] = path
+        shaOf[usc] = sha
+    print("Success 清单 %s@%s 共 %d 个 .mvsv（去重后 %d 个 usc，按路径升序）"
+          % (SUCCESS_DIR, branch, len(successPaths), len(successUscs)), flush=True)
+    if dupUscs:
+        print("  [告警] 同一 usc 出现在多个市场目录（取路径升序里第一个）：%s"
+              % "、".join(sorted(set(dupUscs))), flush=True)
 
     targets, dropped, sampled = resolveTargets(batchUscs, successUscs, batchSize, sampleLimit)
     stats.update(total=len(targets), sampleCount=len(sampled),
@@ -1233,7 +1368,7 @@ def main():
               % (len(dropped), SUCCESS_DIR, "、".join(dropped)), flush=True)
     if not targets:
         print("无可同步条目（本批为空且头部补齐上限为 0），本轮结束。", flush=True)
-        stepSummary(stats, branch, dryRun, probability, batchSize, sampleLimit)
+        stepSummary(stats, branch, dryRun, probability, batchSize, sampleLimit, deleteEnabled)
         return RETURN_OK
     print("本轮目标   %d 条 = 本批 %d + 清单头部补齐 %d"
           % (len(targets), stats["batchCount"], len(sampled)), flush=True)
@@ -1351,29 +1486,66 @@ def main():
                               if any(str(code).startswith(MISS_INSERT_REQUIRED)
                                      for code in misses))
 
-    # ⑨ 汇总
+    # ⑨ 消费 .mvsv：同步完成的记录，其 Success 文件从产物分支删掉（Contents API DELETE）。
+    #    不删的话清单头部每轮取到的都是同一批文件，队列后面的记录永远排不到（见 docstring 第九节）。
+    blockedUsc, orphanKeys = failedUscs(batches, failed)   # dry-run 时 failed 恒为空
+    if orphanKeys:
+        # 主键折算不出 usc：无从判断该留哪些文件，保守起见涉及的表本轮一并不删
+        orphans = sorted(set(table for table, _key in orphanKeys))
+        print("  [告警] 这些失败主键折算不出 usc：%s（涉及的表 %s 本轮不删任何文件）"
+              % ("、".join("%s=%s" % (table, key) for table, key in orphanKeys[:10]),
+                 "、".join(orphans)), flush=True)
+        blockedUsc |= {usc for usc, _record, _plans in rowPlans
+                       if any(plan["table"] in orphans for plan in _plans)}
+    consumed, retained = planConsumption(rowPlans, pendingMismatch, earlyMismatch,
+                                         blockedUsc, sourceOf, shaOf)
+    if consumed or retained:
+        print("-" * 78, flush=True)
+        if not deleteEnabled:
+            print("文件消费   未开启（INPUT_SYNC_DELETE=0）：%d 个已完成同步的 .mvsv 保留在 %s，"
+                  "下一轮会再同步一次" % (len(consumed), SUCCESS_DIR), flush=True)
+        elif dryRun:
+            print("文件消费   [dry-run] 应删除 %d 个已完成同步的 .mvsv：" % len(consumed), flush=True)
+            for usc, path, _sha in consumed:
+                print("      · %s（usc=%s）" % (path, usc), flush=True)
+        else:
+            print("文件消费   删除 %d 个已完成同步的 .mvsv（逐个文件一次提交）：" % len(consumed),
+                  flush=True)
+            stats["deleted"], stats["deleteFailed"] = consumeSuccess(
+                repoAccess, consumed, stats["failures"])
+        if retained:
+            print("文件保留   %d 个：%s%s"
+                  % (len(retained), "；".join("%s（%s）" % (usc, why) for usc, why in retained[:20]),
+                     " …" if len(retained) > 20 else ""), flush=True)
+
+    # ⑩ 汇总
     stats["requests"] = client.requests
     stats["failures"] = [("%s %s %d 行失败" % (table, action, len(keys)), reason)
                          for table, action, keys, reason in failed] + list(stats["failures"])
+    consumeNote = ""
+    if deleteEnabled:
+        consumeNote = "，消费 .mvsv %d 个（删除失败 %d）" % (stats["deleted"], stats["deleteFailed"])
     print("=" * 78, flush=True)
     print("本轮结束：目标 %d，%s %d 行（其中新建 %d 行），写库失败 %d 行，无需变更 %d 项，"
           "未命中留痕 %d（其中映射无记录 %d、映射缺字段 %d、表内缺行 %d、新建缺列 %d），"
-          "告警 %d，请求 %d 次"
+          "告警 %d，请求 %d 次%s"
           % (stats["total"], "计划写入（dry-run 未执行）" if dryRun else "写库成功",
              stats["written"], stats["inserted"], stats["failed"], stats["skippedRows"],
              stats["mismatched"], stats["indexMiss"], stats["recordMiss"], stats["rowMiss"],
-             stats["insertMiss"], len(stats["warns"]), client.requests), flush=True)
+             stats["insertMiss"], len(stats["warns"]), client.requests, consumeNote), flush=True)
     for item, reason in stats["failures"][:20]:
         print("  ✗ %s：%s" % (item, reason), flush=True)
-    stepSummary(stats, branch, dryRun, probability, batchSize, sampleLimit)
+    stepSummary(stats, branch, dryRun, probability, batchSize, sampleLimit, deleteEnabled)
 
     if stats["failures"]:
-        annotate("有 %d 项写库/提交失败，详见步骤日志与运行摘要" % len(stats["failures"]), "error")
+        annotate("有 %d 项写库/提交/删除失败，详见步骤日志与运行摘要" % len(stats["failures"]), "error")
         return RETURN_FAILED
     if stats["inserted"]:
         annotate("本轮新建了 %d 行（表内原无），请人工复核" % stats["inserted"], "warning")
     if stats["mismatched"]:
         annotate("有 %d 条记录未命中，已留痕到 %s/" % (stats["mismatched"], MISMATCH_DIR), "warning")
+    if stats["deleted"]:
+        annotate("已消费 %d 个 .mvsv（配置已同步完成），清单头部随之前移" % stats["deleted"], "notice")
     return RETURN_OK
 
 
