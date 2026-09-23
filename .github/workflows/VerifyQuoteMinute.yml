@@ -58,6 +58,11 @@ on:
         required: false
         default: false
         type: boolean
+      sync_dry_run:
+        description: '配置同步只打印待执行 SQL，不写库、不留痕（自动继承 dry_run：dry_run 置真时本项亦为真）'
+        required: false
+        default: false
+        type: boolean
   schedule:
     # 每天 01:17 UTC（= 09:17 北京时间）跑一次清单文件里的 usc
     - cron: '17 1 * * *'
@@ -115,3 +120,53 @@ jobs:
           path: verify-out/
           if-no-files-found: warn
           retention-days: 14
+
+      # 采集步骤的产物落在 quote-meta 的 Verify/Success|Fail/{market}/；本步骤做它的下游：
+      # 把 Success 下证券（文件名去掉扩展名即 usc）的查询参数回填进 Supabase 的两张配置表
+      # （finv_quote_futu_collect / finv_quote_secu），并把 flag_enable 置 '1' 让新配置生效。
+      # 更新规则、抽样口径、未命中留痕与退出码见脚本模块 docstring：
+      #   .github/Python/VerifyQuoteMinuteSyncConfig.py
+      #
+      # 本轮做多少行 = 本批 usc（与采集步骤同口径，且必须已在 Success 下）
+      #              + 从 Success 清单【按路径升序】取头部补齐的若干条（可复现、可追溯）。
+      # 目录清单经 Git Trees API 取自【产物分支】（INPUT_BRANCH，默认 quote-meta），与本次
+      # 检出哪个分支无关；但脚本取自检出目录，故需 checkout_ref 指向含本脚本的分支（quote-meta）。
+      - name: 同步配置到 Supabase
+        # 执行条件 success() || failure() = 「前面的脚本进程正常终止」：采集即便因部分证券验证
+        # 失败而返回 1，本轮成功采到的证券仍应把配置同步进库；被取消（cancelled）时不执行。
+        if: success() || failure()
+        env:
+          # MisMatch 留痕（Verify/MisMatch/{usc}.txt）提交到产物分支用；仓库身份优先从 .git 解析，
+          # Actions 里由 GITHUB_REPOSITORY 兜底
+          GITHUB_COMMIT_TOKEN: ${{ secrets.GITHUB_COMMIT_TOKEN || github.token }}
+          # 必填：Supabase 凭据（读两张表现状 + 写回字段）。缺失时脚本打印说明并以退出码 2 收工，
+          # 不会静默跳过（避免「以为同步了其实没同步」）
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          # 本批 usc 与产物分支：与采集步骤完全同口径
+          INPUT_USC: ${{ inputs.usc }}
+          INPUT_BRANCH: ${{ inputs.branch }}
+          INPUT_OUT_DIR: verify-out
+          # ---- 抽样参数（刻意写在文件里：改完提交即生效，不必动脚本）----
+          # 命中概率：每轮先掷一次骰子，未命中则本轮什么都不做（不读库、不写库、不留痕）。
+          # 测试期用 100 便于追赶与观察；稳定后按设计调回 10。
+          INPUT_SYNC_PROBABILITY: '100'
+          # 单轮目标数上限 / 从 Success 清单头部补齐的条数上限（本批 3 条时即 3 + 47 = 50）
+          INPUT_SYNC_BATCH_SIZE: '50'
+          INPUT_SYNC_SAMPLE_LIMIT: '47'
+          # 写库并发线程数（同时在途的写请求数）
+          INPUT_SYNC_CONCURRENCY: '6'
+          # 只打印待执行 SQL：dry_run 触发时自动继承，避免「只本地生成、不提交仓库」的演练
+          # 反而真的改动线上配置表
+          INPUT_SYNC_DRY_RUN: ${{ inputs.dry_run || inputs.sync_dry_run }}
+          PYTHONIOENCODING: utf-8
+        run: |
+          set -o pipefail
+          code=0
+          python3 .github/Python/VerifyQuoteMinuteSyncConfig.py || code=$?
+          if [ "$code" -eq 0 ]; then
+            echo "✅ 配置同步结束（未命中记录已留痕到 Verify/MisMatch/，详见步骤日志与运行摘要）"
+          else
+            echo "::error::配置同步失败，退出码 $code（2=任务级错误：凭据缺失/清单列举失败；1=写库或留痕提交失败）"
+          fi
+          exit "$code"
