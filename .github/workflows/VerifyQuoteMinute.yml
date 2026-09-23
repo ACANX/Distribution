@@ -124,7 +124,7 @@ jobs:
       # 采集步骤的产物落在 quote-meta 的 Verify/Success|Fail/{market}/；本步骤做它的下游：
       # 把 Success 下证券（文件名去掉扩展名即 usc）的查询参数回填进 Supabase 的两张配置表
       # （finv_quote_futu_collect / finv_quote_secu），把 flag_enable 置 '1' 让新配置生效，
-      # 再把已同步完成的 .mvsv 删掉（INPUT_SYNC_DELETE=1）让清单头部前移。
+      # 再把已同步完成的 .mvsv 删掉（脚本常量 CONSUME_SUCCESS = True）让清单头部前移。
       # 更新规则、抽样口径、未命中留痕、产物消费与退出码见脚本模块 docstring：
       #   .github/Python/VerifyQuoteMinuteSyncConfig.py
       #
@@ -155,13 +155,12 @@ jobs:
           # 单轮目标数上限 / 从 Success 清单头部补齐的条数上限（本批 3 条时即 3 + 47 = 50）
           INPUT_SYNC_BATCH_SIZE: '50'
           INPUT_SYNC_SAMPLE_LIMIT: '47'
-          # 表里缺行时是否允许新建：默认关闭 —— 缺行的证券只写 Verify/MisMatch/{usc}.txt 留痕，
-          # 由人工决定是否补录（脚本会把插入的行单独列出，开启后务必复核运行摘要）
-          INPUT_SYNC_ALLOW_INSERT: '0'
-          # 同步完成后是否删除对应的 Verify/Success/{market}/{usc}.mvsv：置 1 让清单头部前移
-          # （否则每轮都从同一批文件开始，队列后面的记录永远轮不上）。删除走 Contents API，
-          # 逐个文件一次提交；未命中（已留痕）与写库失败的记录一律保留，dry_run 时只列出不删
-          INPUT_SYNC_DELETE: '1'
+          # 下面两个是「业务定论」，已写死进脚本常量（VerifyQuoteMinuteSyncConfig.py 的
+          # CONSUME_SUCCESS = True / ALLOW_INSERT = False），此处**不再重复配置** ——
+          # 否则工作流每个分支各一份、内容还会漂移，从别的分支触发就会静默回落到默认值。
+          # 需要临时覆盖时再打开对应注释（脚本会在运行头部打印实际取值与来源）：
+          # INPUT_SYNC_DELETE: '0'
+          # INPUT_SYNC_ALLOW_INSERT: '1'
           # 只打印待执行 SQL 与待删文件：dry_run 触发时自动继承，避免「只本地生成、不提交仓库」
           # 的演练反而真的改动线上配置表或删掉产物
           INPUT_SYNC_DRY_RUN: ${{ inputs.dry_run || inputs.sync_dry_run }}
@@ -173,6 +172,6 @@ jobs:
           if [ "$code" -eq 0 ]; then
             echo "✅ 配置同步结束（已同步完成的 .mvsv 已删除，未命中记录已留痕到 Verify/MisMatch/，详见步骤日志与运行摘要）"
           else
-            echo "::error::配置同步失败，退出码 $code（2=任务级错误：凭据缺失/清单列举失败/开了删除却没有令牌；1=写库、留痕提交或删除 .mvsv 失败）"
+            echo "::error::配置同步失败，退出码 $code（2=任务级错误：凭据缺失/清单列举失败/开了删除却没有令牌；1=写库、留痕提交或删除 .mvsv 失败。本轮实际配置见步骤日志开头的「策略开关」两行）"
           fi
           exit "$code"
