@@ -22,7 +22,7 @@ on:
       checkout_ref:
         description: '检出哪个分支上的任务脚本；留空 = 本次 dispatch 的 ref'
         required: false
-        default: ''
+        default: 'quote-meta'
         type: string
       markets:
         description: '只处理这些行情市场段（逗号分隔，留空不限）'
