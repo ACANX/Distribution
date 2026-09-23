@@ -45,8 +45,8 @@ usc 不在索引中时取 `UNKNOWN`。
 失败件与成功件分属两个目录，互不覆盖：同名 usc 若两边都存在，**以 `采集时刻` 更晚的一份为准**。
 
 成功件是「待同步配置」的队列：`VerifyQuoteMinuteSyncConfig.py` 把它的查询参数同步进 Supabase 后，
-会把这个 `.mvsv` 删掉（`INPUT_SYNC_DELETE=1`，见工作流「同步配置到 Supabase」步骤），好让队列
-头部前移、后续证券也能被同步到；未命中（已留 `Verify/MisMatch/` 留痕）与同步失败的件一律保留。
+会把这个 `.mvsv` 删掉（脚本常量 `CONSUME_SUCCESS = True`，见工作流「同步配置到 Supabase」步骤），
+好让队列头部前移、后续证券也能被同步到；未命中（已留 `Verify/MisMatch/` 留痕）与同步失败的件一律保留。
 
 ## 4 任务脚本入参
 

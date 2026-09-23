@@ -12,9 +12,12 @@
     INPUT_SYNC_PROBABILITY       本轮是否执行的命中概率（0-100，默认 100）
     INPUT_SYNC_BATCH_SIZE        单轮最多同步多少条（默认 50，0 = 不限）
     INPUT_SYNC_SAMPLE_LIMIT      从 Verify/Success/ 清单头部最多补齐多少条（默认 47）
-    INPUT_SYNC_ALLOW_INSERT      缺行的证券是否允许新建（默认 false = 只留痕）
-    INPUT_SYNC_DELETE            同步完成的记录，是否删除其 Verify/Success/{market}/{usc}.mvsv
-                                 （默认 false；开启后逐个文件提交删除，见第九节）
+    INPUT_SYNC_ALLOW_INSERT      【可选覆盖】缺行的证券是否允许新建；**定论见常量 ALLOW_INSERT**
+    INPUT_SYNC_DELETE            【可选覆盖】同步完成的记录是否删除其 Verify/Success/{market}/
+                                 {usc}.mvsv；**定论见常量 CONSUME_SUCCESS**（默认开）。
+                                 这两个是业务定论、不是调试旋钮，故写死在脚本常量里，不依赖
+                                 各分支工作流是否带了同名 env（缺 env 时会静默回落到关，
+                                 曾因此出现「以为删了其实没删」）。运行时头部会打印取值与来源。
     INPUT_SYNC_DRY_RUN           置真则只打印将要执行的 SQL 与待删文件，不写库、不提交、不删除
     SUPABASE_PROJECT_REF         Supabase 项目引用（必填）
     SUPABASE_KEY                 Supabase API 密钥（service-role；必填，不落日志）
@@ -255,8 +258,16 @@ DEFAULT_OUT_DIR = "verify-out"
 DEFAULT_PROBABILITY = 100
 DEFAULT_BATCH_SIZE = 50
 DEFAULT_SAMPLE_LIMIT = 47
-DEFAULT_ALLOW_INSERT = False
-DEFAULT_DELETE = False      # 同步完成后删除 .mvsv（见 docstring 第九节）；工作流里已置 1
+
+# ---- 业务策略开关（**定论写在这里**，不依赖各分支工作流里的 INPUT_* env）----
+# 删除开关与缺行开关是「定论」而非「调试旋钮」：工作流每个分支各一份、内容还会漂移，
+# 把定论放在 env 里会出现「从另一个分支触发 → 静默回落到默认 → 以为开了其实没开」。
+# 故此处直接给定论值；同名的 INPUT_* env 仍可覆盖（仅供本地调试，运行时会打印来源）。
+#   CONSUME_SUCCESS    同步完成后删除对应的 Verify/Success/{market}/{usc}.mvsv，
+#                      让清单头部前移（见 docstring 第九节）
+#   ALLOW_INSERT       表内缺行的证券是否允许新建（False = 只写 MisMatch 留痕）
+CONSUME_SUCCESS = True
+ALLOW_INSERT = False
 
 # 消费 .mvsv 时的提交信息（逐个文件一次提交，与采集脚本 "Verify xxx.mvsv" 同风格）
 DELETE_COMMIT_MSG = "Consumed %s"
@@ -346,6 +357,23 @@ def envFlag(name, default=False):
     if not raw:
         return default
     return raw.lower() in ("1", "true", "yes", "on")
+
+
+def policyFlag(name, constant):
+    """读「业务策略」开关：**常量即定论**，同名 env 仅供本地调试覆盖。
+
+    工作流每个分支各一份、内容还会漂移，把定论放在 env 里会出现
+    「从另一个分支触发 → 静默回落到默认 → 以为开了其实没开」。故这里以常量常量值为准，
+    env 只在**显式存在**时覆盖；同时把「值是多少、从哪儿来」一并返回，供启动日志打印。
+
+    :return: (取值 bool, 来源 str)；来源形如 "脚本常量 CONSUME_SUCCESS=True"
+             或 "env INPUT_SYNC_DELETE=1（覆盖脚本常量 CONSUME_SUCCESS=True）"。
+    """
+    raw = env(name)
+    if not raw:
+        return constant, "脚本常量 %s=%s" % (name, "1" if constant else "0")
+    value = raw.lower() in ("1", "true", "yes", "on")
+    return value, "env %s=%s（覆盖脚本常量）" % (name, raw)
 
 
 def envInt(name, default, minimum=None, maximum=None):
@@ -998,8 +1026,8 @@ def mismatchText(usc, record, source, misses, nowText):
     lines += [
         "",
         "## 处理建议",
-        "- 表内缺行时本脚本默认**只留痕不新建**（INPUT_SYNC_ALLOW_INSERT 未开启）：可先补建对应行",
-        "  再重跑本步骤，或把工作流里的 INPUT_SYNC_ALLOW_INSERT 置 1，由脚本自行新建",
+        "- 表内缺行时本脚本默认**只留痕不新建**（脚本常量 ALLOW_INSERT = False）：可先补建对应行",
+        "  再重跑本步骤，或把常量 ALLOW_INSERT 置 True（或临时用 env INPUT_SYNC_ALLOW_INSERT=1",
         "  （新建的行会在运行摘要与步骤日志里单独列出，务必人工复核）。",
         "- 补建口径：futu 表按 stockId；secu 表按 usc，且 sid 需等于上面解析出的 stockId。",
         "- 补建后本文件保留作历史留痕即可。",
@@ -1231,7 +1259,7 @@ def stepSummary(stats, branch, dryRun, probability, batchSize, sampleLimit, dele
     if deleteEnabled:
         consumeNote = "dry-run 只列出，未删除" if dryRun else "已从 %s 删除，头部随之前移" % SUCCESS_DIR
     else:
-        consumeNote = "未开启 INPUT_SYNC_DELETE，下一轮会再同步一次"
+        consumeNote = "关闭（CONSUME_SUCCESS=False 或被 env 覆盖为 0），下一轮会再同步一次"
     if not stats["gated"]:
         lines = ["## VerifyQuoteMinute 配置同步（Supabase）", "",
                  "| 项 | 值 |", "|---|---|",
@@ -1283,8 +1311,8 @@ def main():
     probability = envInt("INPUT_SYNC_PROBABILITY", DEFAULT_PROBABILITY, minimum=0, maximum=100)
     batchSize = envInt("INPUT_SYNC_BATCH_SIZE", DEFAULT_BATCH_SIZE, minimum=0)
     sampleLimit = envInt("INPUT_SYNC_SAMPLE_LIMIT", DEFAULT_SAMPLE_LIMIT, minimum=0)
-    allowInsert = envFlag("INPUT_SYNC_ALLOW_INSERT", DEFAULT_ALLOW_INSERT)
-    deleteEnabled = envFlag("INPUT_SYNC_DELETE", DEFAULT_DELETE)
+    allowInsert, allowInsertFrom = policyFlag("INPUT_SYNC_ALLOW_INSERT", ALLOW_INSERT)
+    deleteEnabled, deleteFrom = policyFlag("INPUT_SYNC_DELETE", CONSUME_SUCCESS)
     dryRun = envFlag("INPUT_SYNC_DRY_RUN")
     watchlist = env("INPUT_WATCHLIST", os.path.join(SCRIPT_DIR, "VerifyQuoteMinuteWatchlist.txt"))
 
@@ -1296,8 +1324,14 @@ def main():
           % (probability, batchSize, sampleLimit, "允许新建" if allowInsert else "只留痕"),
           flush=True)
     print("文件消费   %s" % ("同步完成的记录删除其 .mvsv（清单头部随之前移）" if deleteEnabled
-                             else "未开启 INPUT_SYNC_DELETE：.mvsv 保留，下一轮会再同步一次"),
+                             else "未开启：.mvsv 保留，下一轮会再同步一次"),
           flush=True)
+    # 策略开关的「当前取值 + 来源」：从哪个分支、哪份工作流触发都一目了然，
+    # 免得再出现「以为开了其实没开」（工作流里的 env 缺失时不再静默回落到关）。
+    print("策略开关   删除 .mvsv（INPUT_SYNC_DELETE）= %s ← %s"
+          % ("1" if deleteEnabled else "0", deleteFrom), flush=True)
+    print("           缺行新建（INPUT_SYNC_ALLOW_INSERT）= %s ← %s"
+          % ("1" if allowInsert else "0", allowInsertFrom), flush=True)
     print("=" * 78, flush=True)
 
     stats = {"gated": False, "total": 0, "batchCount": 0, "sampleCount": 0, "written": 0,
@@ -1502,8 +1536,8 @@ def main():
     if consumed or retained:
         print("-" * 78, flush=True)
         if not deleteEnabled:
-            print("文件消费   未开启（INPUT_SYNC_DELETE=0）：%d 个已完成同步的 .mvsv 保留在 %s，"
-                  "下一轮会再同步一次" % (len(consumed), SUCCESS_DIR), flush=True)
+            print("文件消费   关闭（%s）：%d 个已完成同步的 .mvsv 保留在 %s，"
+                  "下一轮会再同步一次" % (deleteFrom, len(consumed), SUCCESS_DIR), flush=True)
         elif dryRun:
             print("文件消费   [dry-run] 应删除 %d 个已完成同步的 .mvsv：" % len(consumed), flush=True)
             for usc, path, _sha in consumed:
