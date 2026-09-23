@@ -3,9 +3,9 @@
 usc        : 03008
 stockId    : 85216446122944
 来源文件   : Verify/Success/HK/03008.mvsv
-检测时刻   : 2026-09-23 19:06:39 (+08:00)
+检测时刻   : 2026-09-23 19:09:41 (+08:00)
 任务脚本   : VerifyQuoteMinuteSyncConfig.py（版本 1）
-工作流运行 : 35852565375
+工作流运行 : 35852854414
 
 ## 未命中的表 / 原因
 - [FUTU_ROW_MISSING] 表 finv_quote_futu_collect 中不存在该 stockId 的行（本轮未开启自动插入）
