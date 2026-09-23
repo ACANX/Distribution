@@ -128,7 +128,7 @@ dt_create 会让**更新**也把创建时间刷成现在。拆开后各自语义
 
     启动时读一次 PostgREST OpenAPI（GET /rest/v1/，Accept: application/openapi+json），
     取每张表 required 列里**没有默认值**的那些（即 INSERT 分支必须出现的列，主键除外）：
-        finv_quote_futu_collect  → 无（stockId 是主键，dt_create / dt_update 有默认值）
+        finv_quote_collect_futu  → 无（stockId 是主键，dt_create / dt_update 有默认值）
         finv_quote_secu          → region、market
     更新分支：payload 里缺的这些列按**库中现值原样回写**（值不变，只为让约束通过，
               日志里以「= 补列」单列一行）；
@@ -284,7 +284,7 @@ RETRY_BACKOFF = 2.0         # 重试退避基数（秒）：第 n 次退避 RETR
 RETRYABLE_STATUS = (429, 500, 502, 503, 504)
 
 # 更新规则（字段口径见模块 docstring 第四节）
-FUTU_TABLE = "finv_quote_futu_collect"
+FUTU_TABLE = "finv_quote_collect_futu"
 FUTU_KEY = "stockId"
 FUTU_FIELDS = (("quote_market", "quoteMarket"), ("type_symbol", "typeSymbol"),
                ("futu_symbol", "futuSymbol"), ("marketType", "marketType"),
@@ -327,7 +327,7 @@ MISS_INSERT_REQUIRED = "INSERT_REQUIRED_MISSING"
 MISS_REASONS = {
     MISS_INDEX: "usc 不在 UscFutuMapping.jsonl.idx 中（无映射记录，解析不出查询参数）",
     MISS_RECORD_FIELD: "映射记录缺关键字段，拼不出完整请求参数",
-    MISS_FUTU_ROW: "表 finv_quote_futu_collect 中不存在该 stockId 的行（本轮未开启自动插入）",
+    MISS_FUTU_ROW: "表 finv_quote_collect_futu 中不存在该 stockId 的行（本轮未开启自动插入）",
     MISS_SECU_ROW: "表 finv_quote_secu 中不存在该 usc 的行（本轮未开启自动插入）",
     MISS_INSERT_REQUIRED: "表内缺行且映射凑不齐非空列（该表本轮不写，避免整块 upsert 失败）",
 }
