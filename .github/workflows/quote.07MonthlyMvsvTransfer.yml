@@ -1,0 +1,103 @@
+# quote.07MonthlyMvsvTransfer —— 月归档 MVSV 跨仓库转存
+# =============================================================================
+#
+# 每月把本仓库(ACANX/Distribution) quote 分支 Archive/Finv/SecuQuote/{年}/{Code}/
+# 下已定稿的**月归档 .mvsv**(由 quote.03ArchiveMonth 的 Task03ArchiveMonthly.py
+# 生成: 从日归档合并去重得来), 经 GitHub Contents API 转存到**另一个仓库**
+# acdnx/Distribution 的 quote 分支**同路径**下, 并在确认送达后删除源端文件。
+#
+# 与 quote.05ArchiveSecuQuoteExecLogJsonlTransfer / quote-gold.GoldQuoteArchiveTransfer
+# 同一套跨仓库约定(重要):
+#   * ACANX/Distribution 与 acdnx/Distribution 是两个真实存在的独立仓库, 不是
+#     同一仓库的大小写变体。转存目标显式写死(脚本内置 + 本文件 env 注入),
+#     绝不经 .git 解析 —— 否则会写回本仓库自身。
+#   * GIT_COMMIT_TOKEN 需同时具备两个仓库的权限: 读本仓库(checkout 检出用),
+#     写 acdnx/Distribution 的 quote 分支(Contents API 提交), 写本仓库的 quote
+#     分支(删除已转存的源文件)。
+#   * 脚本经 blob sha 幂等比对(与转存端同路径文件的 sha 相同即跳过提交, 但**源端
+#     仍会删除** —— 内容已一致即视为送达)。定期重跑不产生内容不变的空提交。
+#   * 转存端多余的文件不删(源端已无、转存端仍在的不做清理); 转存端是长期归档,
+#     只增不删。
+#
+# 调度: 北京时间每月 1 日 06:20(UTC 前一日 22:20)。放在月初之后, 保证上个月的
+# 月归档已经被 quote.03ArchiveMonth 定稿(该任务在月初触发); 脚本侧另有一道保险:
+# **默认跳过当月**归档(当月中途 Task03 仍会重写, 提前转存会产生"源端已删、
+# 转存端是旧版"的局面)。时点与 quote.05(北京 06:07)错开。
+# 注意 schedule 只在默认分支 dev 上生效; actions/checkout 的 ref 指向脚本
+# 实际所在的 quote 分支。
+
+name: quote.07MonthlyMvsvTransfer
+
+on:
+  schedule:
+    - cron: "20 22 * * *"   # UTC 22:20 = 北京时间 06:20, 每日一次(脚本自带往月过滤)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "只打印将要转存的文件, 不实际提交/删除"
+        type: boolean
+        default: false
+      month:
+        description: "只转存该月份(YYYYMM), 留空=不限(默认排除当月)"
+        type: string
+        default: ""
+      include_current:
+        description: "把当月归档也纳入(默认排除, 当月仍在变化)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read   # 只读本仓库; 对 acdnx 的提交与本仓库的删除都经 GIT_COMMIT_TOKEN 走 API
+
+concurrency:
+  group: QuoteMonthlyMvsvTransfer
+  cancel-in-progress: false
+
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout quote (脚本与源数据所在分支)
+        uses: actions/checkout@v5
+        with:
+          ref: quote
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      # 脚本仅标准库; 保留依赖安装步骤与其它工作流对齐, 以备将来引入第三方库
+      - name: Install dependencies
+        run: |
+          if compgen -G ".github/requirements*.txt" > /dev/null; then
+            pip install -r .github/requirements*.txt
+          elif [ -f ".github/Python/Quote/requirements.txt" ]; then
+            pip install -r .github/Python/Quote/requirements.txt
+          else
+            echo "无 requirements 文件, 跳过依赖安装(仅标准库)"
+          fi
+
+      - name: Transfer monthly mvsv to acdnx/Distribution
+        env:
+          GIT_COMMIT_TOKEN: ${{ secrets.GIT_COMMIT_TOKEN }}
+          # 转存端身份(须与脚本内置默认一致; 两个仓库是独立仓库, 不是大小写变体)
+          ARCHIVE_TRANSFER_TARGET_OWNER: acdnx
+          ARCHIVE_TRANSFER_TARGET_REPO: Distribution
+          ARCHIVE_TRANSFER_BRANCH: quote
+          # workflow_dispatch 手动触发时可按月份收窄; 定时触发为空 = 不限
+          # (脚本端默认排除当月, 手动填了月份则以手动值为准)
+          ARCHIVE_TRANSFER_MONTH: ${{ github.event_name == 'workflow_dispatch' && inputs.month || '' }}
+        run: |
+          ARGS=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ inputs.dry_run }}" = "true" ]; then
+              ARGS="$ARGS --dry-run"
+            fi
+            if [ "${{ inputs.include_current }}" = "true" ]; then
+              ARGS="$ARGS --include-current"
+            fi
+          fi
+          python3 .github/Python/Quote/Task07MonthlyMvsvTransfer.py $ARGS

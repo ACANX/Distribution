@@ -18,7 +18,7 @@
     不误报     —— 月归档里已有的交易日，不该因日归档被清理而被当成缺失。
 
 跑法（临时 git 仓库 + 临时目录，不碰真实数据）：
-    python3 tests/archiveMonthlyIdempotentSelfTest.py
+    python3 .github/Python/tests/archiveMonthlyIdempotentSelfTest.py
 """
 
 import os
@@ -31,7 +31,9 @@ from datetime import datetime
 from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+# 本文件位于 <根>/.github/Python/tests/, 其本身也在 .github/Python 之下,
+# 故仓库根 = .github/Python 再上溯一级 = dirname(dirname(dirname(HERE)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 sys.path.insert(0, os.path.join(ROOT, ".github", "Python", "Quote"))
 
 import Task03ArchiveMonthly as T3  # noqa: E402

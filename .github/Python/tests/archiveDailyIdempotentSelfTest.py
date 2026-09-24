@@ -13,7 +13,7 @@
     数据变化     —— 真有新数据时照常更新，Latest 自己的采集信息不受影响。
 
 跑法（临时 git 仓库 + 临时目录，不碰真实数据）：
-    python3 tests/archiveDailyIdempotentSelfTest.py
+    python3 .github/Python/tests/archiveDailyIdempotentSelfTest.py
 """
 
 import os
@@ -26,7 +26,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+# 本文件位于 <根>/.github/Python/tests/, 其本身也在 .github/Python 之下,
+# 故仓库根 = .github/Python 再上溯一级 = dirname(dirname(dirname(HERE)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 sys.path.insert(0, os.path.join(ROOT, ".github", "Python", "Quote"))
 
 import Task02ArchiveDaily as T2  # noqa: E402

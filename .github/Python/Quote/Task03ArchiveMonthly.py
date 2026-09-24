@@ -20,6 +20,12 @@ from common.timeutil import (
 TASK_NAME = 'Task03ArchiveMonthly'
 MISSING_DAYS_REMARK_PREFIX = '月归档缺失交易日: '
 
+# 月归档落点: Archive/Finv/SecuQuote/{year}/{code}/{code}_Min_{yyyyMM}.mvsv
+# (见下方 process_code 的 month_dir / mp 构造)
+# 跨仓库转存脚本 .github/Python/Quote/Task07MonthlyMvsvTransfer.py 按同一命名与
+# 目录结构接收 —— 两边改名/改结构须同步(它只认这一种路径)。
+MONTH_ARCHIVE_PARENT = 'SecuQuote'
+
 
 def get_market(code, metadata):
     m = metadata.get('市场') or metadata.get('Market') or ''
