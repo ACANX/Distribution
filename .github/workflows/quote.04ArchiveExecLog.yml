@@ -1,4 +1,4 @@
-name: Quote04ArchiveExecLog
+name: quote.04ArchiveExecLog
 on:
   workflow_dispatch:
   schedule:
