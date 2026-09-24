@@ -18,7 +18,7 @@
 #   - 依赖 Secrets: SUPABASE_PROJECT_REF / SUPABASE_KEY(Supabase Dashboard > Settings > API);
 #   - 建议首轮 batchSize=50 / fileLimit=5 / enableDelete=false 试运行核对日志,
 #     确认入库与"待删除"清单无误后再开删除开关。
-name: SupabaseSyncMvsv
+name: quote.06DayMvsvFileDataSyncSupabase
 
 on:
   schedule:
@@ -80,4 +80,4 @@ jobs:
           PYTHONIOENCODING: utf-8
         shell: bash
         run: |
-          python3 .github/Python/SupabaseSyncMvsv.py
+          python3 .github/Python/Quote/Task06DayMvsvFileDataSyncSupabase.py
