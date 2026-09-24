@@ -25,7 +25,7 @@
 # 注意 schedule 只在默认分支 dev 上生效; actions/checkout 的 ref 指向脚本
 # 实际所在的 quote 分支。
 
-name: quote.Task05ArchiveSecuQuoteExecLogJsonlTransfer
+name: quote.05ArchiveSecuQuoteExecLogJsonlTransfer
 
 on:
   schedule:
