@@ -25,7 +25,7 @@
 # 注意 schedule 只在默认分支 dev 上生效; actions/checkout 的 ref 指向脚本
 # 实际所在的 quote 分支。
 
-name: quote.ArchiveJsonlTransfer
+name: quote.Task05ArchiveSecuQuoteExecLogJsonlTransfer
 
 on:
   schedule:
@@ -91,4 +91,4 @@ jobs:
               ARGS="$ARGS --dry-run"
             fi
           fi
-          python3 .github/Python/Quote/ArchiveJsonlTransfer.py $ARGS
+          python3 .github/Python/Quote/Task05ArchiveSecuQuoteExecLogJsonlTransfer.py $ARGS
