@@ -75,6 +75,26 @@ class MVSVMetadata:
         return result
 
 
+# 易变元数据字段：取值随采集时刻变化（FetchTime/采集时间），或按 Latest 全体统计
+# 而非本文件数据（Remark/备注）——描述的是「什么时候抓的」而非「文件里是什么」。
+# 归档文件头必须剔除，否则数据无变化时重复归档也会改写已归档文件。
+VOLATILE_META_KEYS = ("FetchTime", "采集时间", "Remark", "备注")
+
+
+def strip_volatile_meta(meta: MVSVMetadata, keys=None) -> List[str]:
+    """移除元数据中的易变字段（中文/英文写法都清），返回实际移除的键。
+
+    keys 缺省为 VOLATILE_META_KEYS；月归档的 备注 归 Task03 记缺失交易日用，
+    调用方可传入更窄的键集合。
+    """
+    removed = []
+    for key in (VOLATILE_META_KEYS if keys is None else keys):
+        for store in (meta.values, meta.extra):
+            if store.pop(key, None) is not None:
+                removed.append(key)
+    return removed
+
+
 def _fmt_meta(key: str, value: str) -> str:
     if not value or any(c in value for c in ":#|"):
         return f'# {key} : "{value}"'
@@ -259,16 +279,33 @@ def parse(path: str) -> MVSVData:
     return MVSVData(metadata=metadata, rows=rows)
 
 
-def serialize(data: MVSVData, path: str):
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
+def render(data: MVSVData) -> str:
+    """把 MVSVData 渲染成 MVSV 文本（serialize 的纯函数部分，不落盘）。"""
     data.metadata["计数"] = str(len(data.rows))
     data.metadata["Count"] = str(len(data.rows))
     lines_out = data.metadata.to_lines()
     lines_out.append("")
     for r in data.rows:
         lines_out.append("|".join(r))
-    body = "\n".join(lines_out)
+    return "\n".join(lines_out)
+
+
+def serialize(data: MVSVData, path: str, *, only_if_changed: bool = False) -> bool:
+    """原子写 mvsv 文件（tmp + rename）。
+    自动更新 `# 计数` / `# Count` 为实际行数。
+
+    only_if_changed=True 时，磁盘内容与待写内容完全一致就不碰文件，直接返回 False。
+    返回 True 表示文件已写入（内容有变化），调用方可据此决定是否 git add。
+    """
+    p = Path(path)
+    body = render(data)
+    if only_if_changed and p.exists():
+        try:
+            if p.read_text(encoding="utf-8") == body:
+                return False
+        except OSError:
+            pass  # 读不出来就走正常写入
+    p.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=".tmp_", suffix=".mvsv")
     try:
         with _os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -280,6 +317,7 @@ def serialize(data: MVSVData, path: str):
         except OSError:
             pass
         raise
+    return True
 
 
 def merge_and_dedup(existing, incoming, *, now_bjt):

@@ -111,15 +111,29 @@ print(f"{len(data.rows)} 行, {len(data.rows[0])} 列")
 print(f"字段: {data.metadata['字段']}")
 ```
 
-### `serialize(data, path)`
+### `render(data) → str`
+
+把 `MVSVData` 渲染成 MVSV 文本，不落盘（`serialize` 的纯函数部分）。
+会自动把 `# 计数` / `# Count` 改写成实际行数。
+
+### `serialize(data, path, *, only_if_changed=False) → bool`
 
 原子写 mvsv 文件（tmp + rename）。
 自动更新 `# 计数` / `# Count` 为实际行数。
 
+`only_if_changed=True` 时，磁盘内容与待写内容完全一致就**不碰文件**并返回 `False`；
+返回 `True` 表示文件已写入。归档这类「可以反复重跑」的场景应带上它。
+
 ```python
 from common.mvsv import serialize
-serialize(data, "output.mvsv")
+if serialize(data, path, only_if_changed=True):
+    gitutil.add(path)          # 只有真变了才进暂存区
 ```
+
+### `strip_volatile_meta(meta, keys=None) → list[str]`
+
+移除元数据中的易变字段（中文/英文写法都清），返回实际移除的键。
+`keys` 缺省为 `VOLATILE_META_KEYS`，可传入更窄的集合（月归档只清时间戳时用）。
 
 ### `merge_and_dedup(existing, incoming, *, now_bjt) → MVSVData`
 
@@ -166,9 +180,38 @@ files = scan_source_files("Data/Finv/SecuQuote/GCMain")
 | 证券代码 / SecuCode | incoming 优先 |
 | 市场 / Market | incoming → existing → 代码推断 |
 | 计数 / Count | 重写为实际行数 |
-| 采集时间 / FetchTime | 重写为当前时间 |
-| 备注 / Remark | incoming 优先 |
-| extra | existing ∪ incoming，冲突以 incoming 为准 |
+| 其它（含采集时间 / FetchTime、备注 / Remark） | extra：existing ∪ incoming，冲突以 incoming 为准 |
+
+### 易变字段与归档文件头
+
+`FetchTime` / `采集时间` / `Remark` / `备注`（`common.mvsv.VOLATILE_META_KEYS`）描述的是
+**「什么时候抓的」而非「文件里是什么」**：前者随采集时刻变化，后者的汇总统计的是 Latest
+全体而非本文件数据。
+
+`Latest.mvsv` 保留它们（采集侧需要），**归档文件头必须剔除**。原因是 Latest 的保留窗口
+（`LatestWindowDays`，36 天）大于归档线（`DailyArchiveAfterDays`，9 天）——每天都有一批已
+归档的日文件被重新归档；头里留着这些字段，数据一行未变也会改写已归档文件，产生无意义的
+提交。
+
+| 位置 | 规则 |
+|---|---|
+| 日归档 `Archive/Finv/SecuQuote/Day/` | 剔除全部四个字段 |
+| 月归档 `Archive/Finv/SecuQuote/<yyyy>/` | 只剔除 `FetchTime` / `采集时间`；`备注` / `Remark` 由 Task03 记「缺失交易日」，保留 |
+
+归档写入一律走 `serialize(..., only_if_changed=True)`：内容不变就不落盘、不 `git add`，
+重复归档不会改动已归档文件。存量文件用
+`python3 .github/Python/Quote/FixArchiveMeta.py [--monthly]` 清理。
+
+### 备注 / Remark 必须读写 extra 区
+
+`备注` / `Remark` 不在 `STANDARD_KEYS` 里，`parse()` 把它们读进 **extra**，`to_lines()`
+也只从 extra 输出。因此：
+
+- 读用 `meta.extra.get('备注')`；`meta.get('备注')` 只查 values，永远拿不到值
+- 写要落到 `meta.extra['备注']`；写进 `meta.values` 的不会被序列化，**静默丢失**
+
+Task03 的「缺失交易日」备注曾栽在这里：读不到旧值、写出去也不落盘，功能整个失效 ——
+文件里那些备注只是历次 parse→serialize 搬运下来的化石，看着像在工作而已。
 
 ---
 

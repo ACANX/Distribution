@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SyncRandomFiles —— 跨仓库随机行情文件同步（供 GitHub Actions 手动工作流调用）
+AlphaSyncRandomFiles —— 跨仓库随机行情文件同步（供 GitHub Actions 手动工作流调用）
 ========================================================================================
 
 一、工具定位
@@ -9,8 +9,9 @@ SyncRandomFiles —— 跨仓库随机行情文件同步（供 GitHub Actions �
 遍历本仓库当前检出分支工作区中 Archive/Finv/SecuQuote/ 下的 .json / .mvsv / .log
 文件（排除 "." 开头的隐藏目录），仅保留"git 最后一次修改时间足够陈旧"的文件
 （.json / .mvsv / .log 均需在 35 天以前），随机抽取其中 25 个
-（不足 25 个按实际数量全取），重命名为规范格式的行情文件后，复用同目录
-GitHubCommitContent.py 提供的 commit_content / commit_content_file 方法，通过
+（不足 25 个按实际数量全取），重命名为规范格式的行情文件后，复用上一级目录
+（.github/Python/）的 GitHubCommitContent.py 提供的 commit_content /
+commit_content_file 方法，通过
 GitHub Contents API 提交到 acdnx/Distribution 仓库的同名分支下，实现免 clone 的
 跨仓库随机复制，用于新仓库的数据测试。其中 .mvsv 文件在发送前会把映射到的
 Region / Market 写入文件头 SecuCode 字段之后（已有旧值则覆盖）。
@@ -28,7 +29,7 @@ Region / Market 写入文件头 SecuCode 字段之后（已有旧值则覆盖）
     - {Code}  ：源文件名首段（证券唯一标识）；
     - {Period}：源文件名中段（Min / Day 等），原样保留；
     - {Date}  ：源文件名尾段（yyyyMMdd，须为 8 位数字）；
-    - {Region}/{Market}：以 {Code} 查同目录 SecuMetaMapping.jsonl 得到，
+    - {Region}/{Market}：以 {Code} 查 .github/Python/SecuMetaMapping.jsonl 得到，
       并同时用于二级目录（{Region}_{Market}）与文件名前缀；
     - {ext}   ：源扩展名原样保留（.mvsv / .json / .log）。
 示例：
@@ -41,7 +42,7 @@ Region / Market 写入文件头 SecuCode 字段之后（已有旧值则覆盖）
     - {Code} 在 SecuMetaMapping.jsonl 中无记录（拿不到 Region / Market）；
     - 不在 Archive/Finv/SecuQuote/ 目录下的文件（本次只转存行情文件）。
 
-三、SecuMetaMapping.jsonl 格式（与本脚本同目录）
+三、SecuMetaMapping.jsonl 格式（位于 .github/Python/，不在本脚本所在目录）
 ----------------------------------------------------------------------------------------
 JSON Lines，一行一个 JSON 对象，字段：Code / Region / Market，例如：
     {"Code": "000001", "Region": "CN", "Market": "SH"}
@@ -57,7 +58,7 @@ JSON Lines，一行一个 JSON 对象，字段：Code / Region / Market，例如
 
 五、调用方式（工作流内）
 ----------------------------------------------------------------------------------------
-    GIT_COMMIT_TOKEN=*** CURR_BRANCH=quote python3 .github/Python/SyncRandomFiles.py
+    GIT_COMMIT_TOKEN=*** CURR_BRANCH=quote python3 .github/Python/Quote/AlphaSyncRandomFiles.py
 
     - 令牌仅经环境变量 GIT_COMMIT_TOKEN 注入（需具备 acdnx/Distribution 的
       contents:write 权限），严禁写入源码或日志；
@@ -81,14 +82,21 @@ import subprocess
 import sys
 import time
 
-# 同目录纯函数库，直接 import（脚本所在目录自动加入 sys.path）
+# 本文件位于 <仓库根>/.github/Python/Quote/ 下；公共的 Contents API 封装在同级的上一级
+# 目录（.github/Python/），加进搜索路径后才能 import。SecuMetaMapping.jsonl 与
+# Commit.json 也留在那一级，见 _PYTHON_DIR 的两处用法。
+_HERE = os.path.dirname(os.path.abspath(__file__))       # <仓库根>/.github/Python/Quote
+_PYTHON_DIR = os.path.dirname(_HERE)                     # <仓库根>/.github/Python
+sys.path.insert(0, _PYTHON_DIR)
+
+# 纯函数库：复用其 commit_content / commit_content_file
 from GitHubCommitContent import commit_content, commit_content_file
 
 # ---------------------------------------------------------------------------
 # 常量
 # ---------------------------------------------------------------------------
 
-# 目标仓库身份（跨仓库复制的落点；与同目录 Commit.json 登记值保持一致）
+# 目标仓库身份（跨仓库复制的落点；与 .github/Python/Commit.json 登记值保持一致）
 TARGET_OWNER = "acdnx"
 TARGET_REPO = "Distribution"
 
@@ -106,7 +114,7 @@ STALE_DAYS_OVERRIDES = {".log": 35}
 # 只转存该目录前缀下的行情文件（其余文件跳过）
 SECU_QUOTE_PREFIX = "Archive/Finv/SecuQuote/"
 
-# 证券元数据映射文件（与本脚本同目录；一行一个 {Code, Region, Market} JSON）
+# 证券元数据映射文件（位于上一级目录 .github/Python/；一行一个 {Code, Region, Market} JSON）
 SECU_META_MAPPING_FILE = "SecuMetaMapping.jsonl"
 
 # 源文件名模式 {Code}_{Period}_{Date}.{ext} 的段数与日期位数要求
@@ -114,19 +122,15 @@ SRC_NAME_SEGMENTS = 3
 SRC_DATE_DIGITS = 8
 
 
-def script_dir():
-    """返回本脚本所在目录（绝对路径）"""
-    return os.path.dirname(os.path.abspath(__file__))
-
-
 def repo_root():
     """返回仓库根目录（绝对路径）
 
-    本脚本固定位于 <仓库根>/.github/Python/ 下，向上两级即为仓库根。
+    本脚本固定位于 <仓库根>/.github/Python/Quote/ 下，从 _HERE 向上三级即为仓库根
+    （Quote/ → Python/ → .github/ → 仓库根）。
 
     :return: 仓库根目录绝对路径
     """
-    return os.path.dirname(os.path.dirname(script_dir()))
+    return os.path.dirname(os.path.dirname(os.path.dirname(_HERE)))
 
 
 def collect_target_files(root):
@@ -213,12 +217,13 @@ def filter_stale_files(root, files):
 
 
 def load_secu_meta_mapping():
-    """加载同目录 SecuMetaMapping.jsonl（一行一个 {Code, Region, Market} JSON）
+    """加载上一级目录（.github/Python/）下的 SecuMetaMapping.jsonl（一行一个
+    {Code, Region, Market} JSON）
 
     :return: dict {Code: (Region, Market)}；文件缺失返回 None（调用方报错退出），
              单行非法 / 缺字段仅 stderr 告警并跳过该行
     """
-    path = os.path.join(script_dir(), SECU_META_MAPPING_FILE)
+    path = os.path.join(_PYTHON_DIR, SECU_META_MAPPING_FILE)
     if not os.path.isfile(path):
         print("❌ 证券元数据映射文件缺失: %s" % path)
         return None
@@ -430,7 +435,7 @@ def main():
     for src_path, target_path, (region, market) in picked:
         local_file = os.path.join(root, src_path.replace("/", os.sep))
         # 提交说明带目标路径与来源分支，便于在目标仓库追溯
-        commit_msg = "[SyncRandomFiles] %s from %s" % (target_path, branch)
+        commit_msg = "[AlphaSyncRandomFiles] %s from %s" % (target_path, branch)
         if src_path.lower().endswith(".mvsv"):
             # .mvsv：读入后在文件头 SecuCode 之后注入 Region/Market（覆盖旧值）再提交
             try:

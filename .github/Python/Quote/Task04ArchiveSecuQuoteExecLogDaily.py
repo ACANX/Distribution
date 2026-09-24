@@ -21,7 +21,7 @@ from common.timeutil import BJT
 TASK_NAME = 'Task04ArchiveSecuQuoteExecLogDaily'
 
 # 归档文件名前缀: Archive/Finv/SecuQuoteExecLog/{ARCHIVE_PREFIX}{yyyyMMdd}.jsonl
-# 跨仓库转存脚本 .github/Python/Quote/ArchiveJsonlTransfer.py 按同一命名接收
+# 跨仓库转存脚本 .github/Python/Quote/Task05ArchiveSecuQuoteExecLogJsonlTransfer.py 按同一命名接收
 ARCHIVE_PREFIX = 'LOG_Finv_SecuQuoteExecLog_DAY_Lambda_'
 
 

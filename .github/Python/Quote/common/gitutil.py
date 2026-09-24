@@ -30,10 +30,18 @@ def add(path: str, cwd: Optional[str] = None) -> None:
 
 
 def commit(message: str, cwd: Optional[str] = None) -> str:
-    """git commit -m <msg>, return SHA or empty string."""
-    result = _run(["commit", "-m", message], cwd)
-    if "nothing to commit" in result.stdout:
-        return ""
+    """git commit -m <msg>, return SHA or empty string.
+
+    没有可提交内容时 git 以非零码退出，这不是错误：返回 "" 表示「未产生提交」。
+    否则调用方为幂等而跳过 git add 后，会在 commit 这一步炸掉。
+    """
+    result = subprocess.run(["git", "commit", "-m", message],
+                            capture_output=True, text=True, cwd=cwd or _git_dir)
+    output = (result.stdout or "") + (result.stderr or "")
+    if result.returncode != 0:
+        if "nothing to commit" in output or "nothing added to commit" in output:
+            return ""
+        raise RuntimeError(f"git error: {result.stderr.strip() or result.stdout.strip()}")
     for line in result.stdout.split("\n"):
         if line.startswith("["):
             parts = line.split("]")[0].split()

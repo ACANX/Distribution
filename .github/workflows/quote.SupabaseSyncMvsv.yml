@@ -23,7 +23,7 @@ name: SupabaseSyncMvsv
 on:
   schedule:
     # 北京时间凌晨 01:00 = UTC 前一天 17:00(GitHub 定时任务按 UTC 解析,
-    # 实际触发可能有数分钟级延迟)。注意与 SyncRandomFiles 同为 17:00 触发,
+    # 实际触发可能有数分钟级延迟)。注意与 AlphaSyncRandomFiles 的触发时间错开,
     # 如需错峰可把其中一个的分钟位错开
     - cron: "17 * * * *"
   workflow_dispatch:
@@ -80,4 +80,4 @@ jobs:
           PYTHONIOENCODING: utf-8
         shell: bash
         run: |
-          python3 .github/Python/SupabaseSyncMvsv.py
+          python3 .github/Python/Quote/Task06DayMvsvFileDataSyncSupabase.py

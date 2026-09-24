@@ -8,7 +8,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from common.config import load_config
 from common.logger import setup_logger
-from common.mvsv import MVSVData, MVSVMetadata, parse, serialize, merge_and_dedup
+from common.mvsv import (
+    MVSVData, MVSVMetadata, parse, serialize, merge_and_dedup, strip_volatile_meta,
+)
 from common import gitutil
 from common.timeutil import (
     BJT, UTC, last_complete_month, ts_to_bjt_date,
@@ -26,13 +28,25 @@ def get_market(code, metadata):
     return m
 
 
-def check_completeness(code, month_str, daily_files, config, metadata, log):
-    """Return trading days without a daily archive and continue aggregation."""
+def archived_dates_of(data):
+    """月归档里已经有的交易日集合（yyyyMMdd）。data 为 None 时返回空集。"""
+    if data is None or not data.rows:
+        return set()
+    return {ts_to_bjt_date(int(r[0])).strftime('%Y%m%d') for r in data.rows}
+
+
+def check_completeness(code, month_str, daily_files, config, metadata, log,
+                       already_archived=None):
+    """Return trading days without a daily archive and continue aggregation.
+
+    already_archived 是月归档里已有的交易日：日归档过了 MonthlyDeleteLagMonths 会被
+    删除，那些天不该因为「没有日文件」就被当成缺失。
+    """
     year = int(month_str[:4])
     month = int(month_str[4:6])
     market = get_market(code, metadata)
     trading_days = get_trading_days_in_month(year, month, market, config.holidays_files)
-    archived_dates = set()
+    archived_dates = set(already_archived or ())
     for f in daily_files:
         parts = Path(f).stem.split('_')
         if len(parts) >= 3:
@@ -54,25 +68,40 @@ def _strip_missing_days_remark(value):
     )
 
 
+def _existing_remark(metadata):
+    """取 备注/Remark 的现值。
+
+    两者都不在标准字段里（`MVSVMetadata.STANDARD_KEYS`），`parse()` 会把它们读进
+    **extra** 区，序列化时也只从 extra 输出。旧实现用 `metadata.get()` 去 values 里找、
+    又用 `metadata['备注'] = ...` 写回 values，于是既读不到旧值、也写不进文件 ——
+    这里两处都看，避免历史文件里混在 values 的残留被漏掉。
+    """
+    for key in ('备注', 'Remark'):
+        for store in (metadata.extra, metadata.values):
+            if store.get(key):
+                return store[key]
+    return ''
+
+
 def set_missing_days_remark(metadata, missing):
-    """Add or refresh the monthly missing-day remark in both metadata forms."""
-    existing_values = [
-        _strip_missing_days_remark(metadata.get('备注') or ''),
-        _strip_missing_days_remark(metadata.get('Remark') or ''),
-    ]
-    existing = next((value for value in existing_values if value), '')
+    """Add or refresh the monthly missing-day remark in both metadata forms.
+
+    写入落在 extra 区（`to_lines()` 只从这里输出 备注/Remark），并清掉旧实现误写进
+    values 的残留，保证「读到的」和「写出去的是同一处」。
+    """
+    existing = _strip_missing_days_remark(_existing_remark(metadata))
     if missing:
         missing_remark = MISSING_DAYS_REMARK_PREFIX + ', '.join(missing)
         remark = f'{existing}; {missing_remark}' if existing else missing_remark
     else:
         remark = existing
 
-    if remark:
-        metadata['备注'] = remark
-        metadata['Remark'] = remark
-    else:
-        metadata.values.pop('备注', None)
-        metadata.values.pop('Remark', None)
+    for key in ('备注', 'Remark'):
+        metadata.values.pop(key, None)
+        if remark:
+            metadata.extra[key] = remark
+        else:
+            metadata.extra.pop(key, None)
 
 
 def process_code(code, config, start_ts, end_ts, month_str, log):
@@ -99,6 +128,12 @@ def process_code(code, config, start_ts, end_ts, month_str, log):
         log.info('当月无日归档')
         return
     log.info(f'当月日归档: {len(month_files)} 个')
+
+    month_dir = config.archive_dir / month_str[:4] / code
+    month_dir.mkdir(parents=True, exist_ok=True)
+    mp = month_dir / f'{code}_Min_{month_str}.mvsv'
+    existing = parse(str(mp)) if mp.exists() else None
+
     missing = check_completeness(
         code,
         month_str,
@@ -106,6 +141,7 @@ def process_code(code, config, start_ts, end_ts, month_str, log):
         config,
         parse(str(month_files[0])).metadata,
         log,
+        already_archived=archived_dates_of(existing),
     )
     now_bjt = datetime.now(BJT)
     base = None
@@ -118,20 +154,23 @@ def process_code(code, config, start_ts, end_ts, month_str, log):
     if base is None:
         return
     log.info(f'合并: {len(base.rows)} 行')
-    month_dir = config.archive_dir / month_str[:4] / code
-    month_dir.mkdir(parents=True, exist_ok=True)
-    mp = month_dir / f'{code}_Min_{month_str}.mvsv'
-    if mp.exists():
-        existing = parse(str(mp))
+    if existing is not None:
         base = merge_and_dedup(existing, base, now_bjt=now_bjt)
         log.info(f'月归档已存在，合并: {len(base.rows)} 行')
+    # 归档头不带采集时刻（日归档侧已剔除，这里兜底防止存量文件回灌）
+    strip_volatile_meta(base.metadata, keys=('FetchTime', '采集时间'))
     set_missing_days_remark(base.metadata, missing)
-    serialize(base, str(mp))
-    log.info(f'月归档: {mp.name} ({len(base.rows)} 行)')
-    gitutil.add(str(mp), cwd=str(config.repo_root))
-    sha = gitutil.commit(f'[Quote] archive monthly {month_str} for {code}', cwd=str(config.repo_root))
-    if sha:
-        log.info(f'月归档 commit: {sha}')
+    # 内容无变化则不写文件、不 add：已归档的月文件保持原样
+    changed = False
+    if serialize(base, str(mp), only_if_changed=True):
+        log.info(f'月归档: {mp.name} ({len(base.rows)} 行)')
+        gitutil.add(str(mp), cwd=str(config.repo_root))
+        sha = gitutil.commit(f'[Quote] archive monthly {month_str} for {code}', cwd=str(config.repo_root))
+        if sha:
+            log.info(f'月归档 commit: {sha}')
+        changed = True
+    else:
+        log.info(f'月归档无变化，跳过提交: {mp.name} ({len(base.rows)} 行)')
     now_bjt_date = datetime.now(BJT)
     delete_year = int(month_str[:4])
     delete_month = int(month_str[4:6])
@@ -139,33 +178,38 @@ def process_code(code, config, start_ts, end_ts, month_str, log):
     if lag_months >= config.monthly_delete_lag_months:
         monthly_data = parse(str(mp))
         if not monthly_data.rows:
-            return
-        mmn = int(monthly_data.rows[0][0])
-        mmx = int(monthly_data.rows[-1][0])
-        to_delete = []
-        for f in month_files:
-            try:
-                fd = parse(str(f))
-            except Exception:
-                continue
-            if not fd.rows:
-                continue
-            fmn = int(fd.rows[0][0])
-            fmx = int(fd.rows[-1][0])
-            if fmn >= mmn and fmx <= mmx:
-                to_delete.append(f)
-        if to_delete:
-            for f in to_delete:
-                gitutil.rm(str(f), cwd=str(config.repo_root))
-            sha2 = gitutil.commit(
-                f'[quote] cleanup daily {month_str} for {code} ({len(to_delete)} files)',
-                cwd=str(config.repo_root),
-            )
-            if sha2:
-                log.info(f'清理 commit: {sha2}')
+            log.info('月归档无数据，跳过清理')
+        else:
+            mmn = int(monthly_data.rows[0][0])
+            mmx = int(monthly_data.rows[-1][0])
+            to_delete = []
+            for f in month_files:
+                try:
+                    fd = parse(str(f))
+                except Exception:
+                    continue
+                if not fd.rows:
+                    continue
+                fmn = int(fd.rows[0][0])
+                fmx = int(fd.rows[-1][0])
+                if fmn >= mmn and fmx <= mmx:
+                    to_delete.append(f)
+            if to_delete:
+                for f in to_delete:
+                    gitutil.rm(str(f), cwd=str(config.repo_root))
+                sha2 = gitutil.commit(
+                    f'[quote] cleanup daily {month_str} for {code} ({len(to_delete)} files)',
+                    cwd=str(config.repo_root),
+                )
+                if sha2:
+                    log.info(f'清理 commit: {sha2}')
+                changed = True
     else:
         log.info(f'延迟窗口未到 ({lag_months}/{config.monthly_delete_lag_months}), 不清理')
-    gitutil.push_with_retry(retries=config.git_push_retries, cwd=str(config.repo_root))
+    if changed:
+        gitutil.push_with_retry(retries=config.git_push_retries, cwd=str(config.repo_root))
+    else:
+        log.info('无变更，跳过推送')
 
 
 def main():

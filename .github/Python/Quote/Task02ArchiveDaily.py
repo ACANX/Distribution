@@ -8,7 +8,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from common.config import load_config
 from common.logger import setup_logger
-from common.mvsv import MVSVData, MVSVMetadata, parse, serialize, merge_and_dedup
+from common.mvsv import (
+    MVSVData, MVSVMetadata, parse, serialize, merge_and_dedup, strip_volatile_meta,
+)
 from common import gitutil
 from common.timeutil import ts_to_bjt_date, BJT, UTC
 
@@ -47,18 +49,29 @@ def process_code(code, config, log):
             for k, v in latest.metadata.values.items():
                 md.values[k] = v
             md.extra = dict(latest.metadata.extra)
+            # 归档头只描述「文件里是什么」，不保留 FetchTime/采集时间/备注：
+            # 它们随采集时刻变化，数据无变化时会让重复归档改写已归档文件
+            strip_volatile_meta(md)
             day_data = MVSVData(metadata=md, rows=rows)
             if ap.exists():
                 day_data = merge_and_dedup(parse(str(ap)), day_data, now_bjt=now_bjt)
+                # 历史归档头里可能仍残留这些字段，合并后一并清掉
+                strip_volatile_meta(day_data.metadata)
                 log.info(f'归档合并: {ap.name} ({len(day_data.rows)} 行)')
-            serialize(day_data, str(ap))
-            log.info(f'写入: {ap.name} ({len(rows)} 行)')
-            gitutil.add(str(ap), cwd=str(config.repo_root))
-            archived_dates.append(ds)
-        commit_msg = f'[Quote] Archive daily for {code} ({len(archived_dates)} days)'
-        sha = gitutil.commit(commit_msg, cwd=str(config.repo_root))
-        if sha:
-            log.info(f'归档 commit: {sha}')
+            # 内容无变化则不写文件、不 add：已归档的日文件保持原样
+            if serialize(day_data, str(ap), only_if_changed=True):
+                log.info(f'写入: {ap.name} ({len(day_data.rows)} 行)')
+                gitutil.add(str(ap), cwd=str(config.repo_root))
+                archived_dates.append(ds)
+            else:
+                log.info(f'无变化跳过: {ap.name} ({len(day_data.rows)} 行)')
+        if archived_dates:
+            commit_msg = f'[Quote] Archive daily for {code} ({len(archived_dates)} days)'
+            sha = gitutil.commit(commit_msg, cwd=str(config.repo_root))
+            if sha:
+                log.info(f'归档 commit: {sha}')
+        else:
+            log.info(f'归档文件均无变化，跳过提交（{len(by_date)} 天）')
     else:
         log.info('无需要归档的数据')
 

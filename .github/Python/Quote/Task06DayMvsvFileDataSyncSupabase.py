@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SupabaseSyncMvsv —— 行情文件分批增量入库 Supabase PG + 验证后删除源文件
+Task06 —— 行情文件分批增量入库 Supabase PG + 验证后删除源文件
 ========================================================================================
 
 一、工具定位
@@ -35,6 +35,8 @@ GitHubCommitContent.py 是纯提交/读取库，不含删除功能（其文档�
 先 GET 查 sha，再 DELETE /repos/{owner}/{repo}/contents/{path}（body 含
 message + sha + branch）。目标仓库 = 本脚本所在仓库（.git 解析，本仓库即
 ACANX/Distribution，不经 Commit.json），令牌走环境变量 GIT_COMMIT_TOKEN。
+"不经 Commit.json"是刻意的：.github/Python/Commit.json 登记的 Owner/Repo 是
+acdnx/Distribution（转存端），走它会把删除打到另一个仓库去。
 
 四、环境变量（凭据与配置一律经环境注入，严禁写进源码或日志）
 ----------------------------------------------------------------------------------------
@@ -60,7 +62,13 @@ import re
 import sys
 import urllib.parse
 
-# 同目录纯函数库：复用其 HTTP 请求 / 认证头 / sha 查询 / 仓库身份解析（纯函数，无副作用）
+# 本文件位于 <仓库根>/.github/Python/Quote/ 下；公共的 Contents API 封装在同级的上一级
+# 目录（.github/Python/），加进搜索路径后才能 import。仓库根见 repo_root()。
+_HERE = os.path.dirname(os.path.abspath(__file__))       # <仓库根>/.github/Python/Quote
+_PYTHON_DIR = os.path.dirname(_HERE)                     # <仓库根>/.github/Python
+sys.path.insert(0, _PYTHON_DIR)
+
+# 纯函数库：复用其 HTTP 请求 / 认证头 / sha 查询 / 仓库身份解析（纯函数，无副作用）
 from GitHubCommitContent import (
     DEFAULT_API_BASE,
     _auth_headers,
@@ -358,7 +366,7 @@ def delete_branch_file(branch, path_key, token, api_base=DEFAULT_API_BASE):
     url = "%s/%s/%s/contents/%s" % (
         api_base, owner, repo, urllib.parse.quote(path_key, safe="/"))
     body = {
-        "message": "[SupabaseSyncMvsv] delete synced %s" % path_key,
+        "message": "[Task06] delete synced %s" % path_key,
         "sha": sha,
         "branch": branch,
     }
@@ -549,8 +557,11 @@ def summarize_file(rel_path, parsed, batches):
 
 
 def repo_root():
-    """返回仓库根目录（绝对路径）；本脚本固定位于 <仓库根>/.github/Python/ 下"""
-    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    """返回仓库根目录（绝对路径）；本脚本固定位于 <仓库根>/.github/Python/Quote/ 下
+
+    即 Quote/ → Python/ → .github/ → 仓库根，从 _PYTHON_DIR 起还要再上溯两级。
+    """
+    return os.path.dirname(os.path.dirname(_PYTHON_DIR))
 
 
 def resolve_branch():
