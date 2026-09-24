@@ -1,4 +1,4 @@
-name: Quote03ArchiveMonth
+name: quote.03ArchiveMonth
 on:
   workflow_dispatch:
     inputs:
