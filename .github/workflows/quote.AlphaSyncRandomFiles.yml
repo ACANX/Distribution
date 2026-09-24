@@ -17,7 +17,7 @@
 #   - 目标分支必须已在 acdnx/Distribution 远端存在;
 #   - 依赖仓库 Secret GIT_COMMIT_TOKEN(需具备 acdnx/Distribution 的
 #     contents:write 权限), 令牌只经环境变量注入脚本。
-name: SyncRandomFiles
+name: AlphaSyncRandomFiles
 
 
 on:
@@ -59,4 +59,4 @@ jobs:
           PYTHONIOENCODING: utf-8
         shell: bash
         run: |
-          python3 .github/Python/SyncRandomFiles.py
+          python3 .github/Python/Quote/AlphaSyncRandomFiles.py
