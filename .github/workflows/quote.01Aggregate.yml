@@ -43,6 +43,7 @@ jobs:
       - name: Task11AggregateLatest
         env:
           QUOTE_CODES: ${{ github.event.inputs.codes }}
+          GITHUB_TOKEN: ${{ secrets.GIT_COMMIT_TOKEN }}
         run: python .github/Python/Quote/Task11AggregateLatest.py
       - name: VerifyCleanPush
         run: |
