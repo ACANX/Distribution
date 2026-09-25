@@ -1,4 +1,4 @@
-name: Quote01Aggregate
+name: quote.01Aggregate
 on:
   push:
     branches: [quote]
