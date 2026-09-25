@@ -5,6 +5,8 @@ on:
     paths:
       - 'Data/Finv/SecuQuote/**/*.mvsv'
       - '!Data/Finv/SecuQuote/**/Latest.mvsv'
+      - 'Data/Finv/SecurityQuoteV5/FTMM/**/*.mvsv'
+      - '!Data/Finv/SecurityQuoteV5/FTMM/**/Latest.mvsv'
   workflow_dispatch:
     inputs:
       codes:
@@ -17,7 +19,7 @@ concurrency:
   group: quote-all
   cancel-in-progress: false
 jobs:
-  aggregate:
+  Aggregate:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -38,6 +40,16 @@ jobs:
         env:
           QUOTE_CODES: ${{ github.event.inputs.codes }}
         run: python .github/Python/Quote/Task01AggregateLatest.py
+      - name: RunTask11AggregateLatest
+        env:
+          QUOTE_CODES: ${{ github.event.inputs.codes }}
+          GITHUB_TOKEN: ${{ secrets.GIT_COMMIT_TOKEN }}
+          # 固定目标分支, 与 checkout 的 ref 保持一致
+          # 不跟随触发 ref: workflow_dispatch 从 Actions 页面触发时默认是仓库默认分支 dev
+          QUOTE_BRANCH: quote
+          # 聚合后清理已被 Latest 完整覆盖的原始文件 (与 Task01 的 CleanupRawAfterAggregate 对齐)
+          AGG_CLEANUP_RAW: "1"
+        run: python .github/Python/Quote/Task11AggregateLatest.py
       - name: VerifyCleanPush
         run: |
           git log origin/quote..HEAD --oneline | (! read)
