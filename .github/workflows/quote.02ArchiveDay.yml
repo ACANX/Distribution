@@ -1,4 +1,4 @@
-name: quote.02ArchiveDay
+name: Quote02ArchiveDay
 on:
   workflow_dispatch:
     inputs:
@@ -29,10 +29,20 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-      - name: Run Task02ArchiveDaily
+      - name: RunTask02ArchiveDaily
         env:
           QUOTE_CODES: ${{ github.event.inputs.codes }}
         run: python .github/Python/Quote/Task02ArchiveDaily.py
+      # Task02 已在上一步独立完成 add/commit/push; Task12 走 Contents API 直写远端,
+      # 不产生本地 commit, 两个任务严格串行、递交互不影响
+      - name: RunTask12ArchiveDaily
+        env:
+          QUOTE_CODES: ${{ github.event.inputs.codes }}
+          GITHUB_TOKEN: ${{ secrets.GIT_COMMIT_TOKEN }}
+          # 固定目标分支, 与 checkout 的 ref 保持一致 (同 Task11)
+          # 不跟随触发 ref: workflow_dispatch 从 Actions 页面触发时默认是仓库默认分支 dev
+          QUOTE_BRANCH: quote
+        run: python .github/Python/Quote/Task12ArchiveDaily.py
       - name: VerifyCleanPush
         run: |
           git log origin/quote..HEAD --oneline | (! read)
