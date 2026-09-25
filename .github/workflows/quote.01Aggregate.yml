@@ -19,7 +19,7 @@ concurrency:
   group: quote-all
   cancel-in-progress: false
 jobs:
-  aggregate:
+  Aggregate:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -40,7 +40,7 @@ jobs:
         env:
           QUOTE_CODES: ${{ github.event.inputs.codes }}
         run: python .github/Python/Quote/Task01AggregateLatest.py
-      - name: Task11AggregateLatest
+      - name: RunTask11AggregateLatest
         env:
           QUOTE_CODES: ${{ github.event.inputs.codes }}
           GITHUB_TOKEN: ${{ secrets.GIT_COMMIT_TOKEN }}
