@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 7193
+# Count : 7195
 # Symbol : FX.CNYCAD
 # SecuCode : CNYCAD
 # USC : CNYCAD
@@ -7208,3 +7208,5 @@
 1790369700|20260926|045500|0.2107|||0.2107|0|0|0.0001|0.05|0.2107
 1790369760|20260926|045600|0.2107|||0.2107|0|0|0.0001|0.05|0.2107
 1790369820|20260926|045700|0.2107|||0.2107|0|0|0.0001|0.05|0.2107
+1790369880|20260926|045800|0.2107|||0.2107|0|0|0.0001|0.05|0.2107
+1790369940|20260926|045900|0.2107|||0.2107|0|0|0.0001|0.05|0.2107
