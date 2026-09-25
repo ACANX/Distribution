@@ -1,4 +1,4 @@
-name: Quote02ArchiveDay
+name: quote.02ArchiveDay
 on:
   workflow_dispatch:
     inputs:
