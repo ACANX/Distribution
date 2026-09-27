@@ -3,9 +3,9 @@
 usc        : 800806
 stockId    : 800806
 来源文件   : Verify/Success/HK/800806.mvsv
-检测时刻   : 2026-09-27 10:54:33 (+08:00)
+检测时刻   : 2026-09-27 10:57:35 (+08:00)
 任务脚本   : VerifyQuoteMinuteSyncConfig.py（版本 2）
-工作流运行 : 36289841493
+工作流运行 : 36289983963
 
 ## 未命中的表 / 原因
 - [FUTU_ROW_MISSING] 表 finv_quote_collect_futu 中不存在该 usc 的行（本轮未开启自动插入）
