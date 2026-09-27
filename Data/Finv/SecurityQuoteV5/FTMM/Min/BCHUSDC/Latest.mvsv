@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 6918
+# Count : 6922
 # Symbol : CC.BCHUSDC
 # SecuCode : BCHUSDC
 # USC : BCHUSDC
@@ -6933,3 +6933,7 @@
 1790533200|20260928|022000|336|||336|0|0|1.52|0.45|336
 1790533260|20260928|022100|336|||336|0|0|1.52|0.45|336
 1790533320|20260928|022200|336|||336|0|0|1.52|0.45|336
+1790533380|20260928|022300|336|||336|0|0|1.52|0.45|336
+1790533440|20260928|022400|336|||336|0|0|1.52|0.45|336
+1790533500|20260928|022500|336|||336|0|0|1.52|0.45|336
+1790533560|20260928|022600|336|||336|0|0|1.52|0.45|336
