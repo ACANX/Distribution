@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 1950
+# Count : 1951
 # Symbol : US.BLV
 # SecuCode : BLV
 # USC : BLV
@@ -1965,3 +1965,4 @@
 1790366280|20260926|035800|63.8|||63.8|135|8614.002|-0.02|-0.03|63.8
 1790366340|20260926|035900|63.8|||63.796|2082|132830.22|-0.024|-0.04|63.8
 1790366400|20260926|040000|63.796|||63.78|7546|481292.58|-0.04|-0.06|63.796
+1790602260|20260928|213100||||63.24|14686|928790.784|-0.54|-0.85|
