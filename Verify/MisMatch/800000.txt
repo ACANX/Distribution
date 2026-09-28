@@ -3,9 +3,9 @@
 usc        : 800000
 stockId    : 800000
 来源文件   : Verify/Success/HK/800000.mvsv
-检测时刻   : 2026-09-29 06:24:34 (+08:00)
+检测时刻   : 2026-09-29 06:27:33 (+08:00)
 任务脚本   : VerifyQuoteMinuteSyncConfig.py（版本 2）
-工作流运行 : 36492144134
+工作流运行 : 36492451792
 
 ## 未命中的表 / 原因
 - [FUTU_ROW_MISSING] 表 finv_quote_collect_futu 中不存在该 usc 的行（本轮未开启自动插入）
