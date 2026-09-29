@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 1950
+# Count : 1952
 # Symbol : US.IEI
 # SecuCode : IEI
 # USC : IEI
@@ -1965,3 +1965,5 @@
 1790625480|20260929|035800|113.445|||113.45|16556|1878163.721|-0.36|-0.32|113.445
 1790625540|20260929|035900|113.45|||113.445|7557|857312.33|-0.365|-0.32|113.45
 1790625600|20260929|040000|113.445|||113.44|26824|3042760.135|-0.37|-0.33|113.445
+1790688660|20260929|213100||||113.41|24863|2819696.389|-0.03|-0.03|
+1790688720|20260929|213200|113.41|||113.385|10197|1156326.067|-0.055|-0.05|113.41
