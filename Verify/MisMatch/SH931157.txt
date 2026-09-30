@@ -1,0 +1,33 @@
+# VerifyQuoteMinute 配置同步：未命中记录
+
+usc        : SH931157
+stockId    : 87106233661333
+来源文件   : Verify/Success/SH/SH931157.mvsv
+检测时刻   : 2026-10-01 00:30:32 (+08:00)
+任务脚本   : VerifyQuoteMinuteSyncConfig.py（版本 2）
+工作流运行 : 36744643246
+
+## 未命中的表 / 原因
+- [FUTU_ROW_MISSING] 表 finv_quote_collect_futu 中不存在该 usc 的行（本轮未开启自动插入）
+
+## 映射表解析出的查询参数
+usc                = SH931157
+stockId            = 87106233661333
+typeSymbol         = index
+quoteMarket        = SH
+futuSymbol         = 931157
+marketType         = 4
+marketCode         = 30
+instrumentType     = 6
+subInstrumentType  = 6001
+nameSc             = SHS红利成长LV
+typeSecu           = StockIndex
+secuRegion         = CN
+secuMarket         = SH
+
+## 处理建议
+- 表内缺行时本脚本默认**只留痕不新建**（脚本常量 ALLOW_INSERT = False）：可先补建对应行
+  再重跑本步骤，或把常量 ALLOW_INSERT 置 True（或临时用 env INPUT_SYNC_ALLOW_INSERT=1
+  （新建的行会在运行摘要与步骤日志里单独列出，务必人工复核）。
+- 补建口径：两张表都以 usc 关联（主键即 usc，finv_quote_collect_futu 改名后尤其如此）。
+- 补建后本文件保留作历史留痕即可。
