@@ -3,9 +3,9 @@
 usc        : BRK.B
 stockId    : 203520
 来源文件   : Verify/Success/US/BRK.B.mvsv
-检测时刻   : 2026-09-30 21:51:38 (+08:00)
+检测时刻   : 2026-09-30 21:54:38 (+08:00)
 任务脚本   : VerifyQuoteMinuteSyncConfig.py（版本 2）
-工作流运行 : 36724661598
+工作流运行 : 36725029173
 
 ## 未命中的表 / 原因
 - [FUTU_ROW_MISSING] 表 finv_quote_collect_futu 中不存在该 usc 的行（本轮未开启自动插入）
