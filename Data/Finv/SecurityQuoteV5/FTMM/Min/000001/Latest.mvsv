@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 1687
+# Count : 1689
 # Symbol : SZ.000001
 # SecuCode : 000001
 # USC : 000001
@@ -1702,3 +1702,5 @@
 1790665080|20260929|145800|11.36|||11.36|12900|146544|0.06|0.53|11.36
 1790665140|20260929|145900|11.36|||11.36|0|0|0.06|0.53|11.36
 1790665200|20260929|150000|11.36|||11.35|963132|10931548.2|0.05|0.44|11.36
+1790731800|20260930|093000||||11.36|262500|2982000|0.01|0.09|
+1790731860|20260930|093100|11.36|||11.39|1827100|20793150|0.04|0.35|11.36
