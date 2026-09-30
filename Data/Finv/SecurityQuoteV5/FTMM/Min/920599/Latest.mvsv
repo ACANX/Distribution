@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 1808
+# Count : 1809
 # Symbol : BJ.920599
 # SecuCode : 920599
 # USC : 920599
@@ -1823,3 +1823,4 @@
 1790738880|20260930|112800|17.35|||17.33|1647|28542.51|-0.23|-1.31|17.35
 1790738940|20260930|112900|17.33|||17.35|2543|44080.19|-0.21|-1.20|17.33
 1790739000|20260930|113000|17.35|||17.35|900|15615|-0.21|-1.20|17.35
+1790744460|20260930|130100||||17.35|3441|59681.74|-0.21|-1.20|
