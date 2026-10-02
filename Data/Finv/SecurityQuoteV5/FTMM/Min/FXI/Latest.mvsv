@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 3120
+# Count : 3122
 # Symbol : US.FXI
 # SecuCode : FXI
 # USC : FXI
@@ -3135,3 +3135,5 @@
 1790884680|20261002|035800|33.93|||33.935|167305|5676837.201|-0.085|-0.25|33.93
 1790884740|20261002|035900|33.935|||33.925|231684|7860533.702|-0.095|-0.28|33.935
 1790884800|20261002|040000|33.925|||33.92|1524653|51724229.583|-0.1|-0.29|33.925
+1790947860|20261002|213100||||33.275|185838|6184069.628|-0.645|-1.90|
+1790947920|20261002|213200|33.275|||33.245|218546|7269858.474|-0.675|-1.99|33.275
