@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 3120
+# Count : 3122
 # Symbol : US.GLL
 # SecuCode : GLL
 # USC : GLL
@@ -3135,3 +3135,5 @@
 1790884680|20261002|035800|24.7|||24.7|6557|161956.94|-0.23|-0.92|24.7
 1790884740|20261002|035900|24.7|||24.71|3375|83398.264|-0.22|-0.88|24.7
 1790884800|20261002|040000|24.71|||24.7|36571|903295.092|-0.23|-0.92|24.71
+1790947860|20261002|213100||||24.5451|6137|150534.771|-0.1549|-0.63|
+1790947920|20261002|213200|24.5451|||24.525|13845|339880.389|-0.175|-0.71|24.5451
