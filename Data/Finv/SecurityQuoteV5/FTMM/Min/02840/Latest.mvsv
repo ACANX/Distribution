@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 2979
+# Count : 2981
 # Symbol : HK.02840
 # SecuCode : 02840
 # USC : 02840
@@ -2994,3 +2994,5 @@
 1790927880|20261002|155800|3010|||3012|1155|3477705|-4|-0.13|3010
 1790927940|20261002|155900|3012|||3011|0|0|-5|-0.17|3012
 1790928000|20261002|160000|3011|||3015|172|517980|-1|-0.03|3011
+1791163800|20261005|093000||||2995|190|569050|-20|-0.66|
+1791163860|20261005|093100|2995|||2990|207|619053|-25|-0.83|2995
