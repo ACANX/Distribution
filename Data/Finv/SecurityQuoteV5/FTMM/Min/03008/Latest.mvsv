@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 2979
+# Count : 2981
 # Symbol : HK.03008
 # SecuCode : 03008
 # USC : 03008
@@ -2994,3 +2994,5 @@
 1790927880|20261002|155800|6.61|||6.61|0|0|0.215|3.36|6.61
 1790927940|20261002|155900|6.61|||6.62|1000|6620|0.225|3.52|6.61
 1790928000|20261002|160000|6.62|||6.62|0|0|0.225|3.52|6.62
+1791163800|20261005|093000||||6.62|0|0|0|0.00|
+1791163860|20261005|093100|6.62|||6.685|2100|14311.5|0.065|0.98|6.62
