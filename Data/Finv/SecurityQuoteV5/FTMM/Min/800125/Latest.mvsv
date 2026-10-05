@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 3307
+# Count : 3310
 # Symbol : HK.800125
 # SecuCode : 800125
 # USC : 800125
@@ -3322,3 +3322,6 @@
 1791186900|20261005|155500|19.1|||19.11|0|0|-0.22|-1.14|19.1
 1791186960|20261005|155600|19.11|||19.09|0|0|-0.24|-1.24|19.11
 1791187020|20261005|155700|19.09|||19.09|0|0|-0.24|-1.24|19.09
+1791187080|20261005|155800|19.09|||19.07|0|0|-0.26|-1.35|19.09
+1791187140|20261005|155900|19.07|||19.08|0|0|-0.25|-1.29|19.07
+1791187200|20261005|160000|19.08|||19.08|0|0|-0.25|-1.29|19.08
