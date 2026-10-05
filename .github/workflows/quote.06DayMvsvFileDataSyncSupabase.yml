@@ -42,7 +42,7 @@ on:
       fileLimit:
         description: "单次运行的文件数上限"
         required: false
-        default: "50"
+        default: "150"
       enableDelete:
         description: "删除开关(仅对本次全部批次成功的文件生效)"
         type: boolean
