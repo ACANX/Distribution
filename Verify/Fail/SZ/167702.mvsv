@@ -4,7 +4,7 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 0
-# 采集时间 : "2026-09-23 05:06:27"
+# 采集时间 : "2026-10-05 21:45:08"
 # 证券代码 : 167702
 # 市场 : SZ
 # 备注 : "汇总: 验证失败|K线=0|错误代码=EMPTY"
@@ -14,7 +14,7 @@
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 0
-# FetchTime : "2026-09-23 05:06:27"
+# FetchTime : "2026-10-05 21:45:08"
 # SecuCode : 167702
 # Market : SZ
 # 以下为本程序追加的元信息（读取方可忽略）
@@ -36,5 +36,5 @@
 # 索引条数 : 18278
 # 任务脚本 : VerifyQuoteMinute.py
 # 任务版本 : 1
-# 采集时刻 : 2026-09-23 05:06:27
+# 采集时刻 : 2026-10-05 21:45:08
 # 失效提示 : 本件为失败留痕；若 Verify/Success/ 下存在同名且采集时刻更晚的文件，以成功件为准
