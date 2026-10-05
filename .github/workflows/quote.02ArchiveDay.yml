@@ -29,10 +29,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-      - name: RunTask02ArchiveDaily
-        env:
-          QUOTE_CODES: ${{ github.event.inputs.codes }}
-        run: python .github/Python/Quote/Task02ArchiveDaily.py
+      # - name: RunTask02ArchiveDaily
+      #   env:
+      #     QUOTE_CODES: ${{ github.event.inputs.codes }}
+      #   run: python .github/Python/Quote/Task02ArchiveDaily.py
       # Task02 已在上一步独立完成 add/commit/push; Task12 走 Contents API 直写远端,
       # 不产生本地 commit, 两个任务严格串行、递交互不影响
       - name: RunTask12ArchiveDaily
