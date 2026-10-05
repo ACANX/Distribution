@@ -42,7 +42,7 @@ on:
       fileLimit:
         description: "单次运行的文件数上限"
         required: false
-        default: "50"
+        default: "150"
       enableDelete:
         description: "删除开关(仅对本次全部批次成功的文件生效)"
         type: boolean
@@ -75,7 +75,7 @@ jobs:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           SUPABASE_BATCH_SIZE: ${{ inputs.batchSize || '50' }}
-          SUPABASE_FILE_LIMIT: ${{ inputs.fileLimit || '50' }}
+          SUPABASE_FILE_LIMIT: ${{ inputs.fileLimit || '150' }}
           # 手动触发取输入值; 定时触发(无 inputs)回落到仓库变量
           # SUPABASE_SCHEDULED_DELETE, 未配置时脚本端默认安全模式(不删)
           SUPABASE_ENABLE_DELETE: ${{ github.event_name == 'workflow_dispatch' && inputs.enableDelete || vars.SUPABASE_SCHEDULED_DELETE }}
@@ -91,7 +91,7 @@ jobs:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           SUPABASE_BATCH_SIZE: ${{ inputs.batchSize || '50' }}
-          SUPABASE_FILE_LIMIT: ${{ inputs.fileLimit || '50' }}
+          SUPABASE_FILE_LIMIT: ${{ inputs.fileLimit || '150' }}
           # 手动触发取输入值; 定时触发(无 inputs)回落到仓库变量
           # SUPABASE_SCHEDULED_DELETE, 未配置时脚本端默认安全模式(不删)
           SUPABASE_ENABLE_DELETE: ${{ github.event_name == 'workflow_dispatch' && inputs.enableDelete || vars.SUPABASE_SCHEDULED_DELETE }}
