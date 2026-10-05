@@ -1,9 +1,12 @@
 # 行情文件增量入库 Supabase PG + 验证后删除源文件:
-# 读取 quote 分支 Archive/Finv/SecuQuote/Day/ 下的 .mvsv 行情文件, 解析后按批次
-# (默认 50 行/批, 可配置)以 PostgREST Upsert(on_conflict=ts,usc) 字段级增量更新到
-# Supabase 表 finv_quote_secu_kline_min; 单个文件全部批次成功且删除开关
-# (enableDelete)开启时, 才通过 Contents API 删除 quote 分支上对应的源文件;
-# 任一批次失败则保留源文件(单批失败不阻塞后续批与后续文件, upsert 幂等可重跑)。
+# 读取 quote 分支 Archive/Finv/SecuQuote/Day/ 与 Archive/Finv/SecuQuote/FTMM/V5/
+# 下的 .mvsv 行情文件, 解析后按批次(默认 50 行/批, 可配置)以 PostgREST
+# Upsert(on_conflict=ts,usc) 字段级增量更新到 Supabase 表 finv_quote_secu_kline_min;
+# 单个文件全部批次成功且删除开关(enableDelete)开启时, 才通过 Contents API 删除
+# quote 分支上对应的源文件; 任一批次失败则保留源文件(单批失败不阻塞后续批与后续
+# 文件, upsert 幂等可重跑)。
+#   - Task06DayMvsvFileDataSyncSupabase: Day/ (SecuQuote 11 列格式)
+#   - Task16DayMvsvFileDataSyncSupabase: FTMM/V5/ (FTMM 12 列格式, 按文件名日期升序)
 # 触发方式:
 #   - 定时触发: 每天 UTC 17:00(北京时间凌晨 01:00)自动运行一次, 分支取默认分支,
 #     batchSize/fileLimit 取默认值; 删除开关由仓库变量 SUPABASE_SCHEDULED_DELETE
@@ -18,12 +21,12 @@
 #   - 依赖 Secrets: SUPABASE_PROJECT_REF / SUPABASE_KEY(Supabase Dashboard > Settings > API);
 #   - 建议首轮 batchSize=50 / fileLimit=5 / enableDelete=false 试运行核对日志,
 #     确认入库与"待删除"清单无误后再开删除开关。
-name: SupabaseSyncMvsv
+name: quote.06DayMvsvFileDataSyncSupabase
 
 on:
   schedule:
     # 北京时间凌晨 01:00 = UTC 前一天 17:00(GitHub 定时任务按 UTC 解析,
-    # 实际触发可能有数分钟级延迟)。注意与 AlphaSyncRandomFiles 的触发时间错开,
+    # 实际触发可能有数分钟级延迟)。注意与 SyncRandomFiles 同为 17:00 触发,
     # 如需错峰可把其中一个的分钟位错开
     - cron: "17 * * * *"
   workflow_dispatch:
@@ -81,3 +84,19 @@ jobs:
         shell: bash
         run: |
           python3 .github/Python/Quote/Task06DayMvsvFileDataSyncSupabase.py
+
+      - name: Task16DayMvsvFileDataSyncSupabase
+        env:
+          GIT_COMMIT_TOKEN: ${{ secrets.GIT_COMMIT_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SUPABASE_BATCH_SIZE: ${{ inputs.batchSize || '50' }}
+          SUPABASE_FILE_LIMIT: ${{ inputs.fileLimit || '50' }}
+          # 手动触发取输入值; 定时触发(无 inputs)回落到仓库变量
+          # SUPABASE_SCHEDULED_DELETE, 未配置时脚本端默认安全模式(不删)
+          SUPABASE_ENABLE_DELETE: ${{ github.event_name == 'workflow_dispatch' && inputs.enableDelete || vars.SUPABASE_SCHEDULED_DELETE }}
+          CURR_BRANCH: ${{ inputs.branch || github.ref_name }}
+          PYTHONIOENCODING: utf-8
+        shell: bash
+        run: |
+          python3 .github/Python/Quote/Task16DayMvsvFileDataSyncSupabase.py
