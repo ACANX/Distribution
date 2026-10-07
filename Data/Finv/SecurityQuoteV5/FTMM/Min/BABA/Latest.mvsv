@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 4680
+# Count : 4681
 # Symbol : US.BABA
 # SecuCode : BABA
 # USC : BABA
@@ -4695,3 +4695,4 @@
 1791316680|20261007|035800|109.13|||109.22|63391|6921603.136|-1.58|-1.43|109.13
 1791316740|20261007|035900|109.22|||109.25|75043|8194051.424|-1.55|-1.40|109.22
 1791316800|20261007|040000|109.25|||109.26|503927|55066597.852|-1.54|-1.39|109.25
+1791379860|20261007|213100||||107.18|28940|3094664.628|-2.08|-1.90|
