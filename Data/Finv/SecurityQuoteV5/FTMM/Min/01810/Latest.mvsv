@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 3641
+# Count : 3643
 # Symbol : HK.01810
 # SecuCode : 01810
 # USC : 01810
@@ -3656,3 +3656,5 @@
 1791273480|20261006|155800|24.22|||24.22|335200|8118612|0.34|1.42|24.22
 1791273540|20261006|155900|24.22|||24.22|216000|5233648.4|0.34|1.42|24.22
 1791273600|20261006|160000|24.22|||24.26|4088800|99184512|0.38|1.59|24.22
+1791336600|20261007|093000||||24.2|598800|14490960|-0.06|-0.25|
+1791336660|20261007|093100|24.2|||24.18|2025000|48905478|-0.08|-0.33|24.2
