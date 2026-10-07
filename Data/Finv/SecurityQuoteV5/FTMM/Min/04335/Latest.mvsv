@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 3641
+# Count : 3644
 # Symbol : HK.04335
 # SecuCode : 04335
 # USC : 04335
@@ -3656,3 +3656,6 @@
 1791273480|20261006|155800|300|||300|0|0|0|0.00|300
 1791273540|20261006|155900|300|||300|0|0|0|0.00|300
 1791273600|20261006|160000|300|||300|0|0|0|0.00|300
+1791336600|20261007|093000||||300|0|0|0|0.00|
+1791336660|20261007|093100|300|||300|0|0|0|0.00|300
+1791336720|20261007|093200|300|||300|0|0|0|0.00|300
