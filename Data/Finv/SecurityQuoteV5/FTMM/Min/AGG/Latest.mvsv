@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 4680
+# Count : 4681
 # Symbol : US.AGG
 # SecuCode : AGG
 # USC : AGG
@@ -4695,3 +4695,4 @@
 1791316680|20261007|035800|94.355|||94.355|86694|8180471.05|0.225|0.24|94.355
 1791316740|20261007|035900|94.355|||94.36|311342|29378536.245|0.23|0.24|94.355
 1791316800|20261007|040000|94.36|||94.36|1080630|101966775.817|0.23|0.24|94.36
+1791379860|20261007|213100||||93.88|132856|12474880.376|-0.48|-0.51|
