@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 4680
+# Count : 4681
 # Symbol : US.KRKR
 # SecuCode : KRKR
 # USC : KRKR
@@ -4695,3 +4695,4 @@
 1791403080|20261008|035800|3.0899|||3.0899|9|26.361|0|0.00|3.0899
 1791403140|20261008|035900|3.0899|||3.0899|0|0|0|0.00|3.0899
 1791403200|20261008|040000|3.0899|||3.0899|31|95.48|0|0.00|3.0899
+1791466260|20261008|213100||||3.0899|1|1.94|0|0.00|
