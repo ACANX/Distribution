@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 2648
+# Count : 2650
 # Symbol : HK.00386
 # SecuCode : 00386
 # USC : 00386
@@ -2663,3 +2663,5 @@
 1791359880|20261007|155800|4.42|||4.42|50000|221000|0.03|0.68|4.42
 1791359940|20261007|155900|4.42|||4.42|72000|318240|0.03|0.68|4.42
 1791360000|20261007|160000|4.42|||4.42|6434000|28438120|0.03|0.68|4.42
+1791423000|20261008|093000||||4.4|312000|1372800|-0.02|-0.45|
+1791423060|20261008|093100|4.4|||4.44|682000|3017010|0.02|0.45|4.4
