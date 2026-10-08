@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 2648
+# Count : 2650
 # Symbol : HK.00300
 # SecuCode : 00300
 # USC : 00300
@@ -2663,3 +2663,5 @@
 1791359880|20261007|155800|90.35|||90.35|4200|379345|-0.45|-0.50|90.35
 1791359940|20261007|155900|90.35|||90.4|29400|2656490|-0.4|-0.44|90.35
 1791360000|20261007|160000|90.4|||90.45|278300|25171910|-0.35|-0.39|90.4
+1791423000|20261008|093000||||90.15|57200|5156580|-0.3|-0.33|
+1791423060|20261008|093100|90.15|||90.6|374600|33928535|0.15|0.17|90.15
