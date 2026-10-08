@@ -3,7 +3,7 @@
 # 字段 : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangeRatio"
 # 字段名称 : "时间戳|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# 计数 : 8937
+# 计数 : 8939
 # 证券代码 : 01810
 # 市场 : cny
 # Title : 01810 Minute Quote Data
@@ -11,13 +11,13 @@
 # Field : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangeRatio"
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
-# Count : 8937
+# Count : 8939
 # SecuCode : 01810
 # USC : 01810
 # Market : cny
-# FetchTime : "2026-10-08 01:26:45"
-# 备注 : "汇总: c=25200|h=25420|l=23700|cnt=1655"
-# 采集时间 : "2026-10-08 01:26:45"
+# FetchTime : "2026-10-08 09:46:45"
+# 备注 : "汇总: c=25240|h=24620|l=23700|cnt=1326"
+# 采集时间 : "2026-10-08 09:46:45"
 
 1788139800|20260831|093000|27.82|27.88|||790000|22025200|0.06|0.22
 1788139860|20260831|093100|27.88|27.86|||1777600|49445678|0.04|0.14
@@ -8956,3 +8956,5 @@
 1791359880|20261007|155800|23.92|23.92|||54400|1301566|-0.34|-1.40
 1791359940|20261007|155900|23.92|23.92|||84800|2029506|-0.34|-1.40
 1791360000|20261007|160000|23.92|23.94|||4056600|97143600|-0.32|-1.32
+1791423000|20261008|093000||24.08|||1567600|37747808|0.14|0.58
+1791423060|20261008|093100|24.08|24.18|||3941200|95634842|0.24|1.00
