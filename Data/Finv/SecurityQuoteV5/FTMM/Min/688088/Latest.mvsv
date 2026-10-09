@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 2403
+# Count : 2405
 # Symbol : SH.688088
 # SecuCode : 688088
 # USC : 688088
@@ -2418,3 +2418,5 @@
 1791444480|20261008|152800|27.4|||27.4|0|0|0|0.00|27.4
 1791444540|20261008|152900|27.4|||27.4|0|0|0|0.00|27.4
 1791444600|20261008|153000|27.4|||27.4|0|0|0|0.00|27.4
+1791509400|20261009|093000||||27.58|55956|1543266|0.18|0.66|
+1791509460|20261009|093100|27.58|||27.65|103063|2840766|0.25|0.91|27.58
