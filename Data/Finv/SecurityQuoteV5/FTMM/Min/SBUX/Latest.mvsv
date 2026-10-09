@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 4680
+# Count : 4681
 # Symbol : US.SBUX
 # SecuCode : SBUX
 # USC : SBUX
@@ -4695,3 +4695,4 @@
 1791489480|20261009|035800|92.825|||92.89|397141|36835304.223|-0.69|-0.74|92.825
 1791489540|20261009|035900|92.89|||93.095|536092|49846515.136|-0.485|-0.52|92.89
 1791489600|20261009|040000|93.095|||93.21|2858669|266399255.281|-0.37|-0.40|93.095
+1791552660|20261009|213100||||93|138190|12850642.971|-0.21|-0.23|
