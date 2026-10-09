@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 5460
+# Count : 5461
 # Symbol : US.BILI
 # SecuCode : BILI
 # USC : BILI
@@ -5475,3 +5475,4 @@
 1791489480|20261009|035800|14.845|||14.845|12223|181452.026|-0.075|-0.50|14.845
 1791489540|20261009|035900|14.845|||14.855|42704|633898.554|-0.065|-0.44|14.845
 1791489600|20261009|040000|14.855|||14.85|166602|2474121.305|-0.07|-0.47|14.855
+1791552660|20261009|213100||||15.41|96067|1478127.487|0.56|3.77|
