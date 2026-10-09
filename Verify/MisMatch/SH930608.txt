@@ -3,9 +3,9 @@
 usc        : SH930608
 stockId    : 87106233660784
 来源文件   : Verify/Success/SH/SH930608.mvsv
-检测时刻   : 2026-10-09 15:30:46 (+08:00)
+检测时刻   : 2026-10-09 15:33:41 (+08:00)
 任务脚本   : VerifyQuoteMinuteSyncConfig.py（版本 2）
-工作流运行 : 37899359775
+工作流运行 : 37899657982
 
 ## 未命中的表 / 原因
 - [FUTU_ROW_MISSING] 表 finv_quote_collect_futu 中不存在该 usc 的行（本轮未开启自动插入）
