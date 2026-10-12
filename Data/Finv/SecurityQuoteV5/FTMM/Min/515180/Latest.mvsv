@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 2410
+# Count : 2412
 # Symbol : SH.515180
 # SecuCode : 515180
 # USC : 515180
@@ -2425,3 +2425,5 @@
 1791529080|20261009|145800|1.445|||1.445|0|0|0.012|0.84|1.445
 1791529140|20261009|145900|1.445|||1.445|0|0|0.012|0.84|1.445
 1791529200|20261009|150000|1.445|||1.443|1936600|2794513.8|0.01|0.70|1.445
+1791768600|20261012|093000||||1.445|1052600|1521007|0.002|0.14|
+1791768660|20261012|093100|1.445|||1.452|8951100|12980435|0.009|0.62|1.445
