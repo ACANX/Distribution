@@ -3,9 +3,9 @@
 usc        : GDRcurrent
 stockId    : 71009921
 来源文件   : Verify/Success/HK/GDRcurrent.mvsv
-检测时刻   : 2026-10-13 04:55:52 (+08:00)
+检测时刻   : 2026-10-13 04:57:20 (+08:00)
 任务脚本   : VerifyQuoteMinuteSyncConfig.py（版本 2）
-工作流运行 : 38305905087
+工作流运行 : 38307184685
 
 ## 未命中的表 / 原因
 - [FUTU_ROW_MISSING] 表 finv_quote_collect_futu 中不存在该 usc 的行（本轮未开启自动插入）
