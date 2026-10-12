@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 2410
+# Count : 2412
 # Symbol : SH.513500
 # SecuCode : 513500
 # USC : 513500
@@ -2425,3 +2425,5 @@
 1791529080|20261009|145800|2.726|||2.726|0|0|0.023|0.85|2.726
 1791529140|20261009|145900|2.726|||2.726|0|0|0.023|0.85|2.726
 1791529200|20261009|150000|2.726|||2.726|7399200|20170218.6|0.023|0.85|2.726
+1791768600|20261012|093000||||2.726|0|0|0|0.00|
+1791768660|20261012|093100|2.726|||2.726|0|0|0|0.00|2.726
