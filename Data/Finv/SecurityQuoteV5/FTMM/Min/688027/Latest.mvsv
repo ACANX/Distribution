@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 2937
+# Count : 2940
 # Symbol : SH.688027
 # SecuCode : 688027
 # USC : 688027
@@ -2952,3 +2952,6 @@
 1791790080|20261012|152800|310.5|||310.5|0|0|0|0.00|310.5
 1791790140|20261012|152900|310.5|||310.5|0|0|0|0.00|310.5
 1791790200|20261012|153000|310.5|||310.5|0|0|0|0.00|310.5
+1791855000|20261013|093000||||305|7772|2370460|-5.5|-1.77|
+1791855060|20261013|093100|305|||301.01|39646|11960037|-9.49|-3.06|305
+1791855120|20261013|093200|301.01|||302.09|16161|4874458|-8.41|-2.71|301.01
