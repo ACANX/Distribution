@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 2937
+# Count : 2940
 # Symbol : SZ.300166
 # SecuCode : 300166
 # USC : 300166
@@ -2952,3 +2952,6 @@
 1791790080|20261012|152800|11.3|||11.3|0|0|0|0.00|11.3
 1791790140|20261012|152900|11.3|||11.3|0|0|0|0.00|11.3
 1791790200|20261012|153000|11.3|||11.3|0|0|0|0.00|11.3
+1791855000|20261013|093000||||11.05|167000|1845350|-0.25|-2.21|
+1791855060|20261013|093100|11.05|||10.99|799900|8812690|-0.31|-2.74|11.05
+1791855120|20261013|093200|10.99|||11.01|367900|4044395|-0.29|-2.57|10.99
