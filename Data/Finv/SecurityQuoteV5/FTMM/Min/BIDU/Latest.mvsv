@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 6630
+# Count : 6632
 # Symbol : US.BIDU
 # SecuCode : BIDU
 # USC : BIDU
@@ -6645,3 +6645,5 @@
 1791921480|20261014|035800|83.86|||83.825|22106|1853418.717|-0.475|-0.56|83.86
 1791921540|20261014|035900|83.825|||83.8|33009|2766349.024|-0.5|-0.59|83.825
 1791921600|20261014|040000|83.8|||83.74|192131|16090911.574|-0.56|-0.66|83.8
+1791984660|20261014|213100||||83.37|27484|2285756.11|-0.37|-0.44|
+1791984720|20261014|213200|83.37|||83.79|8972|750547.924|0.05|0.06|83.37
