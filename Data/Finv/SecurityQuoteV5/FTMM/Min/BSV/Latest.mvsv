@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 6630
+# Count : 6632
 # Symbol : US.BSV
 # SecuCode : BSV
 # USC : BSV
@@ -6645,3 +6645,5 @@
 1791921480|20261014|035800|76.4|||76.395|38679|2954909.856|0.005|0.01|76.4
 1791921540|20261014|035900|76.395|||76.385|53893|4116761.865|-0.005|-0.01|76.395
 1791921600|20261014|040000|76.385|||76.37|213891|16335346.378|-0.02|-0.03|76.385
+1791984660|20261014|213100||||76.185|109405|8336670.901|-0.185|-0.24|
+1791984720|20261014|213200|76.185|||76.19|8931|680380.465|-0.18|-0.24|76.185
