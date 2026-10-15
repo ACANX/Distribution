@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 6630
+# Count : 6632
 # Symbol : US.KWEB
 # SecuCode : KWEB
 # USC : KWEB
@@ -6645,3 +6645,5 @@
 1792007880|20261015|035800|24.475|||24.485|295553|7234556.652|-0.235|-0.95|24.475
 1792007940|20261015|035900|24.485|||24.485|40349|987948.408|-0.235|-0.95|24.485
 1792008000|20261015|040000|24.485|||24.51|751166|18406590.494|-0.21|-0.85|24.485
+1792071060|20261015|213100||||24.2|447381|10838390.805|-0.31|-1.26|
+1792071120|20261015|213200|24.2|||24.255|93245|2256999.144|-0.255|-1.04|24.2
