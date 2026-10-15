@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 6630
+# Count : 6632
 # Symbol : US.LYFT
 # SecuCode : LYFT
 # USC : LYFT
@@ -6645,3 +6645,5 @@
 1792007880|20261015|035800|16.475|||16.47|199128|3277438.992|0.09|0.55|16.475
 1792007940|20261015|035900|16.47|||16.48|390968|6437259.899|0.1|0.61|16.47
 1792008000|20261015|040000|16.48|||16.48|2091533|34463287.606|0.1|0.61|16.48
+1792071060|20261015|213100||||16.515|85105|1397648.39|0.035|0.21|
+1792071120|20261015|213200|16.515|||16.54|11647|191939.024|0.06|0.36|16.515
