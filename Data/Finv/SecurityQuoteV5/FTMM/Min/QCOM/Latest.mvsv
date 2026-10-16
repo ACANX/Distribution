@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 6630
+# Count : 6631
 # Symbol : US.QCOM
 # SecuCode : QCOM
 # USC : QCOM
@@ -6645,3 +6645,4 @@
 1792094280|20261016|035800|178.49|||178.325|161160|28747332.968|5.705|3.30|178.49
 1792094340|20261016|035900|178.325|||178.31|142075|25341884.198|5.69|3.30|178.325
 1792094400|20261016|040000|178.31|||178.4|2902735|517838152.264|5.78|3.35|178.31
+1792157460|20261016|213100||||173.99|503238|87901382.891|-4.41|-2.47|
