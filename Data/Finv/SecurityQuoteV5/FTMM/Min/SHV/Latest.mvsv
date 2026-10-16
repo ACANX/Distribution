@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 6240
+# Count : 6242
 # Symbol : US.SHV
 # SecuCode : SHV
 # USC : SHV
@@ -6255,3 +6255,5 @@
 1792094280|20261016|035800|110.195|||110.2|6672|735321.671|0.02|0.02|110.195
 1792094340|20261016|035900|110.2|||110.195|6607|728076.765|0.015|0.01|110.2
 1792094400|20261016|040000|110.195|||110.2|19137|2108919.941|0.02|0.02|110.195
+1792157460|20261016|213100||||110.24|15104|1665051.778|0.04|0.04|
+1792157520|20261016|213200|110.24|||110.235|1245|137294.101|0.035|0.03|110.24
