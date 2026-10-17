@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 16557
+# Count : 16560
 # Symbol : US.SIcurrent
 # SecuCode : SICurrent
 # USC : SICurrent
@@ -16572,3 +16572,6 @@
 1792184100|20261017|045500|57.015|||57.015|0|0|0.178|0.31|57.015
 1792184160|20261017|045600|57.015|||57.015|0|0|0.178|0.31|57.015
 1792184220|20261017|045700|57.015|||57.015|0|0|0.178|0.31|57.015
+1792184280|20261017|045800|57.015|||57.015|0|0|0.178|0.31|57.015
+1792184340|20261017|045900|57.015|||57.015|0|0|0.178|0.31|57.015
+1792184400|20261017|050000|57.015|||57.015|0|0|0.178|0.31|57.015
