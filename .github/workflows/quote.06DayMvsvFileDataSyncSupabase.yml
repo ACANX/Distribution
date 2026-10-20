@@ -6,6 +6,9 @@
 # quote 分支上对应的源文件; 任一批次失败则保留源文件(单批失败不阻塞后续批与后续
 # 文件, upsert 幂等可重跑)。
 #   - Task06DayMvsvFileDataSyncSupabase: Day/ (SecuQuote 11 列格式)
+#   - Task16DayMvsvFileDataSyncPG: FTMM/V5/ 的同一批数据先增量镜像到自建行情服务
+#     (POST {URL_QUOTE_SYNC_BASE}/API/V1/Meta/Finv/Quote/Secu/KLine/Min/Upsert,
+#      接口文档见 .github/Python/ApiUpsertBatchDelete.md); 该步骤只写数据、不删文件
 #   - Task16DayMvsvFileDataSyncSupabase: FTMM/V5/ (FTMM 12 列格式, 按文件名日期升序)
 # 触发方式:
 #   - 定时触发: 每天 UTC 17:00(北京时间凌晨 01:00)自动运行一次, 分支取默认分支,
@@ -19,6 +22,13 @@
 #   - 删除目标为本仓库(ACANX/Distribution)的 quote 分支, 依赖 Secret
 #     GIT_COMMIT_TOKEN(需本仓库 contents:write 权限);
 #   - 依赖 Secrets: SUPABASE_PROJECT_REF / SUPABASE_KEY(Supabase Dashboard > Settings > API);
+#   - 依赖 Secrets: URL_QUOTE_SYNC_BASE(自建行情服务基础地址, 如 http://<实例IP>:18001,
+#     无鉴权, 服务端按来源 IP 白名单放行); 该 Secret 缺失时 Task16...PG 步骤直接失败;
+#   - 步骤顺序为 Task16DayMvsvFileDataSyncPG → Task16DayMvsvFileDataSyncSupabase:
+#     镜像写入未完整成功时中断, 避免源文件被 Supabase 步骤删除后镜像永久缺数
+#     (Upsert 幂等, 修复后重跑自动补齐); 如确需弱化该保护, 可给 PG 步骤加
+#     continue-on-error: true; 若只是个别行/字段不合法导致 partial 阻塞队列,
+#     可配仓库变量 PG_SYNC_ALLOW_PARTIAL=true 把 partial 降级为告警(仍退出 0);
 #   - 建议首轮 batchSize=50 / fileLimit=5 / enableDelete=false 试运行核对日志,
 #     确认入库与"待删除"清单无误后再开删除开关。
 name: quote.06DayMvsvFileDataSyncSupabase
@@ -84,6 +94,25 @@ jobs:
         shell: bash
         run: |
           python3 .github/Python/Quote/Task06DayMvsvFileDataSyncSupabase.py
+
+      # 先增量镜像到自建行情服务(PG): 与下面的 Supabase 步骤读取同一批 FTMM/V5
+      # 文件、同一 fileLimit; 本步骤不删除源文件, 失败即中断后续步骤(见文件头说明)
+      - name: Task16DayMvsvFileDataSyncPG
+        env:
+          URL_QUOTE_SYNC_BASE: ${{ secrets.URL_QUOTE_SYNC_BASE }}
+          # 定时触发无 inputs, 回落到各自默认值(500 / 150)
+          PG_SYNC_BATCH_SIZE: ${{ inputs.batchSize || '500' }}
+          PG_SYNC_FILE_LIMIT: ${{ inputs.fileLimit || '150' }}
+          PG_SYNC_ON_CONFLICT: update
+          PG_SYNC_TIMEOUT: "60"
+          PG_SYNC_RETRIES: "2"
+          # 未配置仓库变量 = 严格模式: 有行/字段被丢弃(partial)也按失败返回
+          PG_SYNC_ALLOW_PARTIAL: ${{ vars.PG_SYNC_ALLOW_PARTIAL }}
+          CURR_BRANCH: ${{ inputs.branch || github.ref_name }}
+          PYTHONIOENCODING: utf-8
+        shell: bash
+        run: |
+          python3 .github/Python/Quote/Task16DayMvsvFileDataSyncPG.py
 
       - name: Task16DayMvsvFileDataSyncSupabase
         env:
