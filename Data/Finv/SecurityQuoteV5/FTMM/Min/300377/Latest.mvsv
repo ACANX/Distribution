@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 4272
+# Count : 4274
 # Symbol : SZ.300377
 # SecuCode : 300377
 # USC : 300377
@@ -4287,3 +4287,5 @@
 1792394880|20261019|152800|13.44|||13.44|0|0|0|0.00|13.44
 1792394940|20261019|152900|13.44|||13.44|0|0|0|0.00|13.44
 1792395000|20261019|153000|13.44|||13.44|0|0|0|0.00|13.44
+1792459800|20261020|093000||||13.5|98300|1327050|0.06|0.45|
+1792459860|20261020|093100|13.5|||13.47|747200|9990392|0.03|0.22|13.5
