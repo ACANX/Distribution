@@ -6,8 +6,13 @@
 # (接口文档见 .github/Python/ApiUpsertBatchDelete.md)。
 # 脚本: .github/Python/Quote/Task17SupabaseToPgMigrate.py
 #
-# 触发方式: 仅手动触发(Actions 页 Run workflow) —— 该操作会删除 Supabase 数据,
-# 不做定时运行。
+# 触发方式:
+#   - 定时触发: 每天自动运行一次(北京时间 02:30 = UTC 18:30), 输入取默认值:
+#     batchSize=100 / maxBatches=50000; 删除开关由仓库变量
+#     MIGRATE_SCHEDULED_DELETE 控制(未配置 = 按脚本默认开删除;
+#     配为 "false" = 定时运行只迁移不删除)
+#   - 手动触发: Actions 页 Run workflow, 各输入以页面填写为准
+#     (enableDelete 仅作用于本次运行)
 #
 # 检出分支: 固定检出 quote 分支(见 checkout 步骤的 ref) —— 本任务要求迁移脚本
 # 与数据链路都在 quote 分支上执行; 因此本工作流文件与 Task17SupabaseToPgMigrate.py
@@ -27,12 +32,16 @@
 #     跑一轮, 核对「读取/写入/跳过」数字后再正式开删;
 #   - 单批写入失败时该批一行都不会被删除, 修复后重跑即可(Upsert 幂等, 不会重复
 #     也不会丢数据); 有行级校验失败的行会保留在源表并在日志中逐条给出原因;
-#   - 并发保护: 同一时刻只允许一个迁移任务运行(concurrency), 避免两个任务互相
-#     重复搬运 / 竞态删除;
+#   - 并发保护: 同一时刻只允许一个迁移任务运行(concurrency, 手动与定时共用),
+#     避免两个任务互相重复搬运 / 竞态删除; 定时与手动撞车时后者排队等待;
 #   - 达到批次上限属正常收工(退出码 0), 再触发一次即可继续迁移剩余数据。
 name: quote.08SupabaseToPgMigrate
 
 on:
+  schedule:
+    # 每天一次: 北京时间 02:30 = UTC 18:30
+    # (GitHub 定时任务按 UTC 解析, 实际触发可能有数分钟级延迟)
+    - cron: "30 18 * * *"
   workflow_dispatch:
     inputs:
       batchSize:
@@ -87,8 +96,10 @@ jobs:
           URL_QUOTE_SYNC_BASE: ${{ secrets.URL_QUOTE_SYNC_BASE }}
           MIGRATE_BATCH_SIZE: ${{ inputs.batchSize || '100' }}
           MIGRATE_MAX_BATCHES: ${{ inputs.maxBatches || '50000' }}
-          # 布尔输入在表达式里转成字符串, 与脚本的 env_bool 约定一致
-          MIGRATE_ENABLE_DELETE: ${{ inputs.enableDelete && 'true' || 'false' }}
+          # 布尔输入在表达式里转成字符串(与脚本 env_bool 约定一致)。
+          # 手动触发取输入值; 定时触发(无 inputs)回落到仓库变量 MIGRATE_SCHEDULED_DELETE,
+          # 未配置时为空 -> 脚本默认开删除(本任务的本职行为)
+          MIGRATE_ENABLE_DELETE: ${{ github.event_name == 'workflow_dispatch' && (inputs.enableDelete && 'true' || 'false') || vars.MIGRATE_SCHEDULED_DELETE }}
           MIGRATE_CONTINUE_ON_ERROR: ${{ inputs.continueOnError && 'true' || 'false' }}
           MIGRATE_ON_CONFLICT: update
           MIGRATE_TIMEOUT: "60"
@@ -100,4 +111,5 @@ jobs:
           PYTHONIOENCODING: utf-8
         shell: bash
         run: |
-          python3 .github/Python/Quote/Task17SupabaseToPgMigrate.py
+          # -u: 不缓冲 stdout, 让进度/错误在 Actions 日志里实时可见
+          python3 -u .github/Python/Quote/Task17SupabaseToPgMigrate.py
