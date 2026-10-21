@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 8967
+# Count : 8970
 # Symbol : US.CMCM
 # SecuCode : CMCM
 # USC : CMCM
@@ -8982,3 +8982,6 @@
 1792612500|20261022|035500|2.4|||2.4|97|223.19|0.07|3.00|2.4
 1792612560|20261022|035600|2.4|||2.4|0|0|0.07|3.00|2.4
 1792612620|20261022|035700|2.4|||2.4|0|0|0.07|3.00|2.4
+1792612680|20261022|035800|2.4|||2.4|0|0|0.07|3.00|2.4
+1792612740|20261022|035900|2.4|||2.4|0|0|0.07|3.00|2.4
+1792612800|20261022|040000|2.4|||2.4|15|34.64|0.07|3.00|2.4
