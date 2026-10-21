@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 8580
+# Count : 8582
 # Symbol : US.BEKE
 # SecuCode : BEKE
 # USC : BEKE
@@ -8595,3 +8595,5 @@
 1792526280|20261021|035800|18.045|||18.04|37012|667537.164|0.13|0.73|18.045
 1792526340|20261021|035900|18.04|||18.045|18840|339893.633|0.135|0.75|18.04
 1792526400|20261021|040000|18.045|||18.06|467000|8431410.913|0.15|0.84|18.045
+1792589460|20261021|213100||||17.765|75268|1337678.792|-0.295|-1.63|
+1792589520|20261021|213200|17.765|||17.74|12598|223970.019|-0.32|-1.77|17.765
