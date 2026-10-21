@@ -195,6 +195,12 @@ def test_build_item():
 
 def test_supabase_queries():
     captured = []
+    pages = {
+        None: [{"usc": "A", "ts": 50}, {"usc": "A", "ts": 60},
+               {"usc": "B", "ts": 100}],
+        "B": [{"usc": "C", "ts": 70}],
+        "C": [],
+    }
 
     def fake_http(url, method, body_bytes=None, headers=None, timeout=30):
         captured.append({"method": method, "url": url,
@@ -203,14 +209,11 @@ def test_supabase_queries():
             return 200, '[{"usc": "A", "ts": 1}]', {}
         if "select=*" in url:
             return 200, '[{"usc": "A", "ts": 1, "close": 10.2}]', {}
-        if "ts.min()" in url:
-            return 200, '[{"usc": "01810", "first_ts": 100}]', {}
         if "select=usc,ts" in url:
-            if "or=(" in url:
-                return 200, "[]", {}
-            return 200, json.dumps([{"usc": "B", "ts": 100},
-                                    {"usc": "A", "ts": 50},
-                                    {"usc": "A", "ts": 60}]), {}
+            cursor = None
+            if "usc=gt." in url:
+                cursor = url.split("usc=gt.", 1)[1].split("&", 1)[0]
+            return 200, json.dumps(pages.get(cursor, [])), {}
         return 200, '[{"usc": "01810", "ts": 200}]', {}
 
     original = M.http_request
@@ -221,11 +224,19 @@ def test_supabase_queries():
               reader.discover_columns() == {"usc", "ts", "close"})
 
         securities = reader.list_securities()
-        url = captured[-1]["url"]
-        check("证券清单：聚合查询 min(ts) 并按最早 ts 升序",
-              securities == [("01810", 100)]
-              and "select=usc,first_ts:ts.min()" in url
-              and "order=first_ts.asc,usc.asc" in url, (securities, url))
+        check("证券清单按最早 ts 升序",
+              securities == [("A", 50), ("C", 70), ("B", 100)], securities)
+        scan_urls = [item["url"] for item in captured
+                     if "select=usc,ts" in item["url"]]
+        check("证券清单：主键顺序扫描 + usc 键集分页",
+              len(scan_urls) == 3
+              and "order=usc.asc,ts.asc" in scan_urls[0]
+              and "limit=1000" in scan_urls[0]
+              and "usc=gt." not in scan_urls[0]
+              and "usc=gt.B" in scan_urls[1]
+              and "usc=gt.C" in scan_urls[2], scan_urls)
+        check("证券清单不再使用聚合函数",
+              all("ts.min()" not in url for url in scan_urls), scan_urls)
 
         rows = reader.fetch_page(["usc", "ts"], 100, "01810", after_ts=100)
         url = captured[-1]["url"]
@@ -249,27 +260,22 @@ def test_supabase_queries():
         check("密钥不出现在 URL 中",
               all("key" not in item["url"] for item in captured))
 
-        # 聚合查询不可用时回退为扫描 usc/ts
-        def fake_http_fallback(url, method, body_bytes=None, headers=None,
-                               timeout=30):
-            captured.append({"method": method, "url": url,
-                             "headers": dict(headers or {})})
-            if "ts.min()" in url:
-                return 400, '{"code":"PGRST100","message":"no aggregate"}', {}
-            if "select=usc,ts" in url and "or=(" not in url:
-                return 200, json.dumps([{"usc": "B", "ts": 100},
-                                        {"usc": "A", "ts": 50},
-                                        {"usc": "A", "ts": 60}]), {}
-            return 200, "[]", {}
+        # statement timeout（57014）不重试，直接给可行动提示
+        attempts = []
 
-        M.http_request = fake_http_fallback
-        fallback_reader = M.SupabaseTable("proj", "key", retries=0)
-        buffer = io.StringIO()
-        with redirect_stdout(buffer):
-            securities = fallback_reader.list_securities()
-        check("聚合不可用时回退扫描并按最早 ts 升序",
-              securities == [("A", 50), ("B", 100)], securities)
-        check("回退扫描会告警", "回退为扫描" in buffer.getvalue())
+        def fake_timeout(url, method, body_bytes=None, headers=None, timeout=30):
+            attempts.append(url)
+            return 500, ('{"code":"57014","message":"canceling statement '
+                         'due to statement timeout"}'), {}
+
+        M.http_request = fake_timeout
+        timeout_reader = M.SupabaseTable("proj", "key", retries=2)
+        try:
+            timeout_reader.list_securities()
+            check("语句超时不重试并给出提示", False)
+        except M.MigrationError as e:
+            check("语句超时不重试并给出提示",
+                  "57014" in str(e) and len(attempts) == 1, (str(e), attempts))
     finally:
         M.http_request = original
 
