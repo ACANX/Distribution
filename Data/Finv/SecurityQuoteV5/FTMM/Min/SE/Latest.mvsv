@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 7800
+# Count : 7802
 # Symbol : US.SE
 # SecuCode : SE
 # USC : SE
@@ -7815,3 +7815,5 @@
 1792526280|20261021|035800|79.925|||80.17|273208|21869266.769|-8.3|-9.38|79.925
 1792526340|20261021|035900|80.17|||80.4|400974|32169379.992|-8.07|-9.12|80.17
 1792526400|20261021|040000|80.4|||80.43|1550535|124631440.151|-8.04|-9.09|80.4
+1792589460|20261021|213100||||79.765|270381|21565561.088|-0.665|-0.83|
+1792589520|20261021|213200|79.765|||79.195|65451|5220105.167|-1.235|-1.54|79.765
