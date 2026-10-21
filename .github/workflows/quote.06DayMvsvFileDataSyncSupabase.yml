@@ -48,11 +48,11 @@ on:
       batchSize:
         description: "数据库单批提交行数"
         required: false
-        default: "50"
+        default: "100"
       fileLimit:
         description: "单次运行的文件数上限"
         required: false
-        default: "150"
+        default: "500"
       enableDelete:
         description: "删除开关(仅对本次全部批次成功的文件生效)"
         type: boolean
@@ -100,9 +100,9 @@ jobs:
       - name: Task16DayMvsvFileDataSyncPG
         env:
           URL_QUOTE_SYNC_BASE: ${{ secrets.URL_QUOTE_SYNC_BASE }}
-          # 定时触发无 inputs, 回落到各自默认值(500 / 150)
+          # 定时触发无 inputs, 回落到各自默认值(500 / 500)
           PG_SYNC_BATCH_SIZE: ${{ inputs.batchSize || '100' }}
-          PG_SYNC_FILE_LIMIT: ${{ inputs.fileLimit || '150' }}
+          PG_SYNC_FILE_LIMIT: ${{ inputs.fileLimit || '500' }}
           PG_SYNC_ON_CONFLICT: update
           PG_SYNC_TIMEOUT: "60"
           PG_SYNC_RETRIES: "2"
