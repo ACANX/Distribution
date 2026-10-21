@@ -11,9 +11,10 @@
 #      接口文档见 .github/Python/ApiUpsertBatchDelete.md); 该步骤只写数据、不删文件
 #   - Task16DayMvsvFileDataSyncSupabase: FTMM/V5/ (FTMM 12 列格式, 按文件名日期升序)
 # 触发方式:
-#   - 定时触发: 每天 UTC 17:00(北京时间凌晨 01:00)自动运行一次, 分支取默认分支,
-#     batchSize/fileLimit 取默认值; 删除开关由仓库变量 SUPABASE_SCHEDULED_DELETE
-#     控制(未配置或非 "true" = 安全模式不删; 配置为 "true" = 定时运行也执行删除)
+#   - 定时触发: 每 5 小时自动运行一次(UTC 0/5/10/15/20 点的第 17 分, 即北京时间
+#     08:17 / 13:17 / 18:17 / 23:17 / 04:17), batchSize/fileLimit 取默认值;
+#     删除开关由仓库变量 SUPABASE_SCHEDULED_DELETE 控制
+#     (未配置或非 "true" = 安全模式不删; 配置为 "true" = 定时运行也执行删除)
 #   - 手动触发: Actions 页 Run workflow, 各输入以页面填写为准
 #     (enableDelete 仅作用于本次运行中全部批次成功的文件)
 # 注意:
@@ -35,10 +36,11 @@ name: quote.06DayMvsvFileDataSyncPG
 
 on:
   schedule:
-    # 北京时间凌晨 01:00 = UTC 前一天 17:00(GitHub 定时任务按 UTC 解析,
-    # 实际触发可能有数分钟级延迟)。注意与 SyncRandomFiles 同为 17:00 触发,
-    # 如需错峰可把其中一个的分钟位错开
-    - cron: "17 * * * *"
+    # 每 5 小时一次: UTC 0/5/10/15/20 点的第 17 分触发
+    # (= 北京时间 08:17 / 13:17 / 18:17 / 23:17 / 04:17)
+    # 注: 一天 24 小时无法被 5 整除, 20 点 -> 次日 0 点间隔为 4 小时,
+    # 属 cron 固有限制; GitHub 定时任务按 UTC 解析, 实际触发可能延迟数分钟
+    - cron: "17 */5 * * *"
   workflow_dispatch:
     inputs:
       branch:
