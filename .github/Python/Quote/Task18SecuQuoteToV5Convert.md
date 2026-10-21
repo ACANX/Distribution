@@ -23,7 +23,7 @@
 
 1. 老数据不丢、不改语义，只做「格式迁移 + 切分」；
 2. 转换结果能被 `Task11AggregateLatest` 无差别接受（12 列、文件头齐全）；
-3. 反复演练安全：**默认开启删除但只删「转换完整成功」的文件**，且可用
+3. 可重复执行**：默认开启删除，但只删「转换完整成功」的文件，且可用
    `--no-delete-source` 一键关闭；重复运行不产生重复切片；
 4. 转换过程中的任何不确定因素都显式报错，不猜测元信息。
 
@@ -118,13 +118,13 @@ Symbol SecuCode USC Name Region Market TimeZone Currency
 模板缺失（目标目录不存在，或目录下没有任何可解析的 `.mvsv`）时，该证券**直接失败**
 并提示先放置模板文件——不会凭猜测拼 `Region/Market/TimeZone/Currency/Name`。
 
-### 1.5 幂等与可重复演练
+### 1.5 幂等与可重复执行
 
 - 每个切片的内容（文件头 + 数据行）先渲染成字节串，再算 `sha256`；
 - 与目标目录里已有 `<代码>_Min_*.mvsv` 的内容指纹比对（比对前统一 `CRLF → LF`），
   指纹相同即视为「已转换过」，**跳过不重写**；
 - 指纹不同才落盘，文件名冲突时顺延 1 秒，不覆盖已有文件；
-- 因此同一个源目录可以反复转换、反复演练，不会堆积重复数据。
+- 因此同一个源目录可以反复转换（中途中断后重跑也一样），不会堆积重复数据。
 
 ### 1.6 安全边界
 
@@ -144,9 +144,8 @@ Symbol SecuCode USC Name Region Market TimeZone Currency
 |---|---|---|
 | `--root PATH` | 脚本位置推导的仓库根（`parents[2]`） | 便于在临时目录做自测 |
 | `--codes A,B` | 空（处理全部） | 只处理指定证券 |
-| `--limit N` | `0`（不限制） | 最多处理 N 个证券，演练用 |
+| `--limit N` | `0`（不限制） | 最多处理 N 个证券，便于分批跑 |
 | `--slice-rows N` | `1000` | 每个输出文件最多行数（必须为正整数） |
-| `--dry-run` | 关 | 只统计不落盘 |
 | `--no-fill-last-close` | 关（即默认回填） | 关闭 LastClose 回填 |
 | `--delete-source` | **开**（默认值） | 删除已转换的源文件（写上只是显式声明）；环境变量 `CONVERT_DELETE_SOURCE` 可覆盖 |
 | `--no-delete-source` | — | 关闭删除，只新增切片；也可用 `CONVERT_DELETE_SOURCE=false` |
@@ -155,7 +154,7 @@ Symbol SecuCode USC Name Region Market TimeZone Currency
 | 退出码 | 含义 |
 |---|---|
 | `0` | 全部证券转换成功（含「内容已存在而跳过」）；源目录没有待处理证券也算成功 |
-| `1` | 致命错误（源目录不存在、非演练模式下目标根目录不存在、`--slice-rows <= 0`）或存在转换失败的证券（模板缺失、字段头不可识别等）；或因数据不完整 / 删除失败而保留源文件（默认开启删除时） |
+| `1` | 致命错误（源目录不存在、目标根目录不存在、`--slice-rows <= 0`）或存在转换失败的证券（模板缺失、字段头不可识别等）；或因数据不完整 / 删除失败而保留源文件 |
 
 ### 1.8 删除源文件开关（默认开启）
 
@@ -166,7 +165,7 @@ Symbol SecuCode USC Name Region Market TimeZone Currency
 # 默认行为：转换成功的源文件会被删除
 python3 .github/Python/Quote/Task18SecuQuoteToV5Convert.py
 
-# 只想镜像/演练：关闭删除
+# 只想镜像（只新增切片、不删源文件）：关闭删除
 python3 .github/Python/Quote/Task18SecuQuoteToV5Convert.py --no-delete-source
 CONVERT_DELETE_SOURCE=false python3 .github/Python/Quote/Task18SecuQuoteToV5Convert.py
 
@@ -182,7 +181,6 @@ python3 .github/Python/Quote/Task18SecuQuoteToV5Convert.py --delete-source --kee
 | 该文件没有坏行（列数不符 / 缺 ts） | 有坏行说明数据没搬完，保留并列入清单 |
 | 该文件没有 `ts` 非法行（`dropped`） | 同上，保留 |
 | `--keep-latest` 未开启，或该文件不是 `Latest.mvsv` | 需要留一份历史快时可加 `--keep-latest` |
-| 非 `--dry-run` | 演练模式只打印「将删除」，不动文件 |
 
 其它行为：
 
@@ -198,7 +196,8 @@ python3 .github/Python/Quote/Task18SecuQuoteToV5Convert.py --delete-source --kee
 - 删除失败（权限/占用）不会中断脚本：该文件转为「保留」并列入清单，退出码 `1`；
 - 删除是**文件系统操作**，git 提交仍需要你自己做（`git add -A` 或 `git rm`）；
 - 开删除后，如果某证券的老目录变空，git 里对应目录会自然消失（空目录不入库）；
-- 开启删除前后都建议先 `--dry-run` 看一眼「将删除」清单；
+- 想先确认会删哪些文件：用 `--no-delete-source --codes ...` 先跑一遍转换并核对日志，
+  确认切片齐全后再去掉 `--no-delete-source` 重跑（已转换的切片会被指纹跳过，只补删除）；
 - 参数优先级：命令行（`--delete-source` / `--no-delete-source`）>
   环境变量 `CONVERT_DELETE_SOURCE` > 默认值 `True`。
 
@@ -249,7 +248,7 @@ main()
  ├─ 解析参数，校验 --slice-rows > 0
  ├─ 计算 source_root = <root>/Data/Finv/SecuQuote
  │             target_root = <root>/Data/Finv/SecurityQuoteV5/FTMM/Min
- ├─ 校验：源目录必须存在；非 dry-run 时目标根目录必须存在
+ ├─ 校验：源目录必须存在；目标根目录必须存在
  ├─ resolve_codes()：源目录下的子目录名（排序）；--codes 优先，--limit 截断
  └─ for code in codes:
        convert_code(code)
@@ -402,7 +401,8 @@ return ("\n".join(lines) + "\n").encode("utf-8")    # 恒为 LF
 | `dropped_rows` | 无法确定 date/time（ts 非法）的行数 |
 | `bad_rows` | 列数不符 / 缺少 ts 的坏行数 |
 | `filled_last_close` | 回填 LastClose 的行数 |
-| `deleted_sources` | 本次删除的源文件数（演练时 = 将删除数） |
+| `deleted_sources` | 本次删除的源文件数 |
+| `deleted_latest` / `deleted_incremental` | 上述删除里 Latest.mvsv 与增量文件各多少个 |
 | `kept_sources` | 因数据不完整 / 删除失败 而保留的源文件清单（元素为完整路径 + 原因） |
 | `template` | 使用的模板文件 |
 
@@ -424,7 +424,7 @@ return ("\n".join(lines) + "\n").encode("utf-8")    # 恒为 LF
 7. 6 列来源的 `date/time` 由 `ts` 推导（UTC+8），`Open/High/Low` 为空；
 8. `LastClose`：首行空、其余 = 上一行 `Close`（关闭回填时整列为空）；
 9. 输出文件名满足 `^<代码>_Min_\d{8}_\d{6}\.mvsv$`，时间基准来自来源；
-10. 重复运行不新增文件；`--dry-run` 不落盘；模板缺失不写任何文件；
+10. 重复运行不新增文件；模板缺失不写任何文件；
 11. 输出能被 `Task11AggregateLatest.parseMvsv / mergeRows / renderMvsv` 直接消费。
 
 ---
@@ -440,13 +440,13 @@ return ("\n".join(lines) + "\n").encode("utf-8")    # 恒为 LF
 ### 3.2 常用命令
 
 ```bash
-# 1) 全量演练（不写任何文件，只看统计）
-python3 .github/Python/Quote/Task18SecuQuoteToV5Convert.py --dry-run
+# 1) 先只转换、不删源文件（核对产物与日志，最稳的第一步）
+python3 .github/Python/Quote/Task18SecuQuoteToV5Convert.py --no-delete-source
 
-# 2) 试点两个证券（默认会删除已转换的源文件）
+# 2) 小范围试点（只处理指定证券；默认会删除已转换的源文件）
 python3 .github/Python/Quote/Task18SecuQuoteToV5Convert.py --codes 01810,000985
 
-# 3) 只处理前 3 个证券（演练阶段逐步放量）
+# 3) 只处理前 3 个证券（分批放量）
 python3 .github/Python/Quote/Task18SecuQuoteToV5Convert.py --limit 3
 
 # 4) 调整切片大小（例如每片 500 行）
@@ -455,17 +455,13 @@ python3 .github/Python/Quote/Task18SecuQuoteToV5Convert.py --slice-rows 500
 # 5) 不回填前收价（整列留空）
 python3 .github/Python/Quote/Task18SecuQuoteToV5Convert.py --no-fill-last-close
 
-# 6) 全量转换（默认：转换成功后删除已转换的源文件；可重复运行）
+# 6) 全量转换（默认：转换成功后删除源文件，含 Latest.mvsv；可重复运行）
 python3 .github/Python/Quote/Task18SecuQuoteToV5Convert.py
 
-# 7) 先演练「删除」动作（只打印将删除的清单，不真删）
-python3 .github/Python/Quote/Task18SecuQuoteToV5Convert.py --dry-run
-
-# 8) 保留 Latest.mvsv 作回滚快（只删增量文件）
+# 7) 保留 Latest.mvsv 作回滚快（只删增量文件）
 python3 .github/Python/Quote/Task18SecuQuoteToV5Convert.py --keep-latest
 
-# 9) 关闭删除，只做镜像（不删任何源文件）
-python3 .github/Python/Quote/Task18SecuQuoteToV5Convert.py --no-delete-source
+# 8) 用环境变量关闭删除（便于 Actions / 脚本化）
 CONVERT_DELETE_SOURCE=false python3 .github/Python/Quote/Task18SecuQuoteToV5Convert.py
 ```
 
@@ -476,7 +472,8 @@ CONVERT_DELETE_SOURCE=false python3 .github/Python/Quote/Task18SecuQuoteToV5Conv
 仓库根 = /path/to/Distribution
 源目录 = .../Data/Finv/SecuQuote
 目标目录 = .../Data/Finv/SecurityQuoteV5/FTMM/Min
-切片上限 = 1000 行/文件，回填前收价 = 是，演练模式 = 否
+切片上限 = 1000 行/文件，回填前收价 = 是
+删除源文件 = 是（默认）
 待处理证券 28 个：000001、000510、…
 ---- 01810 ----
   🧩 文件头模板：Latest.mvsv
@@ -540,10 +537,10 @@ python3 .github/Python/tests/secuQuoteToV5ConvertSelfTest.py
 ```
 
 自测覆盖：11 列/6 列两种来源转换、列序与 `ts` 推导、`LastClose` 回填与开关、
-头 16 键顺序与模板沿用、切片与命名（来源时间基准、顺延）、幂等重跑、`--dry-run`、
+头 16 键顺序与模板沿用、切片与命名（来源时间基准、顺延）、幂等重跑、
 模板缺失、坏行容错、`--codes/--limit`，以及「输出能被 Task11 解析/合并/渲染」。
 
-### 3.6 实测参考（2026-10-21 本地演练）
+### 3.6 实测参考（2026-10-21 本地实测）
 
 | 指标 | 数值 |
 |---|---|
@@ -567,7 +564,7 @@ python3 .github/Python/tests/secuQuoteToV5ConvertSelfTest.py
 
 1. **默认会删除源文件**（删除开关默认开启）：不加任何参数时，脚本会在
    「该源文件的全部切片已落盘且无坏行/无 ts 非法行」后删除它，属于“转完一份删一份”。
-   删除不可恢复，建议先 `--dry-run`（看将删除清单）→ `--codes ...`（小范围试点）→ 全量；
+   删除不可恢复，建议先 `--no-delete-source --codes ...` 核对切片与日志 → 再全量；
    若想保留回滚快，加 `--keep-latest` 只删增量文件；若只想镜像不删，
    用 `--no-delete-source` 或 `CONVERT_DELETE_SOURCE=false`。
    删除/保留日志都会打印源文件的**完整路径**，可直接拿去排障或核对 diff。
@@ -577,7 +574,7 @@ python3 .github/Python/tests/secuQuoteToV5ConvertSelfTest.py
    完成，便于「转换」和「聚合」两步分开校验、分开回滚。
 3. **不覆盖已有文件**：内容相同跳过、文件名冲突顺延 1 秒；不会破坏别人刚采集的
    原始文件。
-4. 演练先用 `--dry-run` 看统计，再 `--codes`/`--limit` 小范围试点，最后全量。
+4. 先用 `--no-delete-source` 跑小范围（`--codes`/`--limit`）核对产物，再全量删除源文件。
 5. 全量转换会产生数百个新文件（实测 484 个），提交前注意 `git status` 与仓库体积；
    中途放弃可用 `git clean -n` / `git clean -f <目录>` 清理（先 `-n` 预览）。
 6. **删除后的 git 操作**：脚本不做 `git add/rm`。开删除后需要自己提交：
@@ -617,7 +614,7 @@ python3 .github/Python/tests/secuQuoteToV5ConvertSelfTest.py
 
 | 现象 | 原因 / 处理 |
 |---|---|
-| `❌ 目标目录不存在：.../FTMM/Min` | 非 `--dry-run` 时必须已检出/存在新链路目录 |
+| `❌ 目标目录不存在：.../FTMM/Min` | 必须已检出/存在新链路目录 |
 | `❌ <代码> 转换失败：新链路目录缺少文件头模板` | 该证券在新链路没有可用 `.mvsv`，先放一个模板文件 |
 | `⚠️ ... 头部证券代码是 X，与目录 Y 不一致，按目录代码转换` | 源文件头的 `SecuCode` 与目录名不一致（不常见），脚本以目录名（目标证券）为准，仅告警 |
 | `⚠️ ... 有 N 行无法确定日期/时间（ts 非法），仍按空值写出` | 源行 `ts` 无法解析为时间戳；这行不参与 `LastClose` 推断，需人工核查源数据 |

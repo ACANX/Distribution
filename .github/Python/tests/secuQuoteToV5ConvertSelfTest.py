@@ -265,12 +265,8 @@ def test_convert_and_slice(tmp):
           and "已存在跳过 5" in out2, out2[-300:])
 
 
-def test_dry_run_and_last_close_switch(tmp):
+def test_last_close_switch(tmp):
     root, _src, dst = build_tree(tmp)
-    code, out = run_main(root, "--dry-run")
-    check("演练模式退出码 0", code == 0, out[-300:])
-    check("演练模式不写文件", slice_files(dst) == [], [p.name for p in dst.iterdir()])
-
     code, out = run_main(root, "--slice-rows", "10", "--no-fill-last-close",
                          "--no-delete-source")
     check("关闭前收价回填后整列为空",
@@ -325,7 +321,7 @@ def test_codes_and_limit(tmp):
 
 
 def test_delete_source(tmp):
-    """删除开关默认开启：转换成功后删除源文件（含保留 Latest、不完整不删、演练不删）"""
+    """删除开关默认开启：转换成功后删除源文件（含保留 Latest、不完整不删、可关闭）"""
     # 1) 默认即删除（不传任何开关）
     root = Path(tmp) / "case1"
     root, src, dst = build_tree(root)
@@ -338,6 +334,9 @@ def test_delete_source(tmp):
           [p.name for p in slice_files(dst)])
     check("日志含删除标记与删除计数",
           "🗑️ 删除源文件" in out and "删除源文件 2 个" in out, out[-400:])
+    check("Latest.mvsv 也在删除范围内，且汇总区分两类",
+          "（Latest.mvsv）" in out
+          and "Latest.mvsv 1 个 / 增量文件 1 个" in out, out[-400:])
     check("删除日志打印完整路径", str(src) in out, out[-400:])
 
     # 删除后重跑：无源文件时安全退出 0
@@ -366,15 +365,7 @@ def test_delete_source(tmp):
     check("有保留文件时退出码 1 且列出清单",
           "保留的源文件清单" in out and "坏行" in out, out[-500:])
 
-    # 4) 演练模式不真删
-    root4 = Path(tmp) / "case4"
-    root4, src4, _dst4 = build_tree(root4)
-    code, out = run_main(root4, "--dry-run")
-    check("演练模式只提示不删除",
-          code == 0 and len(list(src4.glob("*.mvsv"))) == 2
-          and "将删除源文件" in out, out[-400:])
-
-    # 5) 环境变量可显式开启 / 关闭
+    # 4) 环境变量可显式开启 / 关闭
     root5 = Path(tmp) / "case5"
     root5, src5, _dst5 = build_tree(root5)
     os.environ["CONVERT_DELETE_SOURCE"] = "false"
@@ -396,6 +387,17 @@ def test_delete_source(tmp):
     check("CONVERT_DELETE_SOURCE=true 关闭命令可被显式开启覆盖",
           code == 0 and list(src6.glob("*.mvsv")) == [], out[-400:])
 
+    # 6b) Latest.mvsv 只有头、无数据行时也要删（空文件无数据可丢）
+    root8 = Path(tmp) / "case8"
+    empty_latest = SOURCE_11.split("1788139800", 1)[0]
+    root8, src8, _dst8 = build_tree(root8, source_11=empty_latest)
+    code, out = run_main(root8, "--slice-rows", "5")
+    check("无数据行的 Latest.mvsv 也会被删除",
+          code == 0 and list(src8.glob("*.mvsv")) == [],
+          (code, [p.name for p in src8.glob("*.mvsv")]))
+    check("空文件删除日志带 Latest 标注",
+          "没有可转换的数据行" in out and "（Latest.mvsv）" in out, out[-400:])
+
     # 7) --no-delete-source 优先于环境变量
     root7 = Path(tmp) / "case7"
     root7, src7, _dst7 = build_tree(root7)
@@ -412,7 +414,7 @@ def main():
     C.log = print
     cases = (
         ("基础转换/切片/幂等/兼容", test_convert_and_slice),
-        ("演练模式与前收价开关", test_dry_run_and_last_close_switch),
+        ("前收价回填开关", test_last_close_switch),
         ("模板缺失", test_template_missing),
         ("坏行容错", test_bad_rows),
         ("--codes / --limit", test_codes_and_limit),

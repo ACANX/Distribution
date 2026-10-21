@@ -26,7 +26,7 @@ Latest.mvsv 用头部 FetchTime/采集时间，都没有时用末行 ts，最后
 
 **默认删除已转换的源文件**（删除开关默认开启）：每个源文件只有在
 「它的全部切片都写成功且无坏行」之后才会被删除（见 §五、§六）；
-只想做镜像 / 演练时用 `--no-delete-source`（或 `CONVERT_DELETE_SOURCE=false`）关闭，
+只想做镜像（不删源文件）时用 `--no-delete-source`（或 `CONVERT_DELETE_SOURCE=false`）关闭，
 或用 `--keep-latest` 保留 Latest.mvsv。
 
 二、两种目录的格式差异（本脚本负责转换）
@@ -72,24 +72,23 @@ TypeKLine/Count/Symbol/SecuCode/USC/Name/Region/Market/TimeZone/Currency），
 某个证券在新链路没有模板时（目录不存在或目录下没有 .mvsv），该证券失败并提示
 先放一个模板文件；不会靠猜测拼 Region/Market 等字段。
 
-四、幂等与可重复演练
+四、幂等与可重复执行
 ----------------------------------------------------------------------------------------
     - 切片文件名时间基准：见 §一（来源采集时刻，同来源切片依次顺延 1 秒）；
     - 每个切片的内容（头 + 数据行）算 sha256，与目标目录里已有 <代码>_Min_*.mvsv
       的内容指纹比对：内容相同即视为「已转换过」，跳过不重写；
     - 内容不同时才写新文件；文件名被占用时自动顺延 1 秒，绝不覆盖已有文件；
-    - 因此重复运行本脚本不会堆积重复数据，可以放心多次演练。
+    - 因此重复运行本脚本不会堆积重复数据，中途中断直接重跑即可。
 
 五、环境变量与命令行
 ----------------------------------------------------------------------------------------
-    --dry-run              只统计不落盘（演练用）
     --codes A,B            只处理指定证券（默认处理源目录下全部证券）
-    --limit N              最多处理 N 个证券（演练用，默认 0 = 不限制）
+    --limit N              最多处理 N 个证券（分批跑用，默认 0 = 不限制）
     --slice-rows N         每个输出文件最多多少条记录（默认 1000）
     --no-fill-last-close   不回填 LastClose（默认回填，见 §二）
     --root PATH            仓库根目录（默认按脚本位置自动推导）
     --delete-source        删除已转换的源文件（**默认开启**，写上也只是显式声明）
-    --no-delete-source     关闭删除，只新增切片（演练 / 镜像）
+    --no-delete-source     关闭删除，只新增切片（只做镜像）
                            也可用环境变量 CONVERT_DELETE_SOURCE=false 关闭
     --keep-latest          保留 Latest.mvsv，只删待聚合的增量文件
                            （也可用环境变量 CONVERT_KEEP_LATEST=true）
@@ -573,6 +572,8 @@ def convert_code(code, options, source_root, target_root):
         "files": [],
         "template": None,
         "deleted_sources": 0,
+        "deleted_latest": 0,
+        "deleted_incremental": 0,
         "kept_sources": [],
     }
     if not files:
@@ -606,9 +607,11 @@ def convert_code(code, options, source_root, target_root):
             if len(bad) > 3:
                 log("  ⚠️ %s 其余 %d 行坏行同上" % (path.name, len(bad) - 3))
         if not records:
-            log("  ⚠️ %s 没有可转换的数据行，跳过" % path)
-            if options.delete_source:
-                stats["kept_sources"].append((str(path), "没有可转换的数据行"))
+            log("  ⚠️ %s 没有可转换的数据行" % path)
+            if bad:
+                log("  （%d 行坏行，数据不完整，保留源文件）" % len(bad))
+            # 空文件（只有头、无数据行）没有可丢的数据，开删除时也要删掉
+            decide_delete_source(path, options, stats, bad, 0)
             continue
 
         filled, filled_count = fill_last_close(records,
@@ -636,12 +639,6 @@ def convert_code(code, options, source_root, target_root):
                     % digests[digest])
                 continue
             name = next_slice_name(code, start_moment, used_names)
-            if options.dry_run:
-                log("  🧪 [dry-run] 将写入 %s（%d 行）" % (name, len(rows_part)))
-                stats["written"] += 1
-                stats["added_rows"] += len(rows_part)
-                stats["files"].append(name)
-                continue
             write_atomic(target_dir / name, data)
             digests[digest] = name
             stats["written"] += 1
@@ -661,7 +658,7 @@ def decide_delete_source(path, options, stats, bad, dropped):
     """根据转换结果决定是否删除源文件（仅在开启删除开关时生效）
 
     删除条件（全部满足才删）：
-        1) 开启 --delete-source / CONVERT_DELETE_SOURCE；
+        1) 开启删除开关（默认开启，--no-delete-source 关闭）；
         2) 该文件的所有切片已落盘或目标已有同内容切片（本次未抛异常）；
         3) 该文件没有坏行（列数不符 / 缺 ts），没有 ts 非法行；
         4) 未开启 --keep-latest，或该文件不是 Latest.mvsv。
@@ -675,6 +672,8 @@ def decide_delete_source(path, options, stats, bad, dropped):
     if not options.delete_source:
         return
 
+    is_latest = path.name == LATEST_NAME
+    suffix = "（Latest.mvsv）" if is_latest else ""
     reasons = []
     if bad:
         reasons.append("%d 行坏行（列数不符/缺 ts）" % len(bad))
@@ -685,12 +684,8 @@ def decide_delete_source(path, options, stats, bad, dropped):
         log("  ⏸️ 保留源文件 %s：%s（数据不完整，不删除）"
             % (path, "，".join(reasons)))
         return
-    if options.keep_latest and path.name == LATEST_NAME:
+    if options.keep_latest and is_latest:
         log("  ⏸️ 保留源文件 %s（--keep-latest）" % path)
-        return
-    if options.dry_run:
-        stats["deleted_sources"] += 1
-        log("  🧪 [dry-run] 将删除源文件：%s" % path)
         return
     try:
         os.remove(path)
@@ -699,7 +694,8 @@ def decide_delete_source(path, options, stats, bad, dropped):
         log("  ⚠️ 删除源文件失败 %s：%s（已保留）" % (path, e))
         return
     stats["deleted_sources"] += 1
-    log("  🗑️ 删除源文件：%s" % path)
+    stats["deleted_latest" if is_latest else "deleted_incremental"] += 1
+    log("  🗑️ 删除源文件：%s%s" % (path, suffix))
 
 
 # ---------------------------------------------------------------------------
@@ -718,12 +714,10 @@ def parse_args(argv=None):
     parser.add_argument("--codes", default="",
                         help="只处理指定证券，逗号分隔（默认全部）")
     parser.add_argument("--limit", type=int, default=0,
-                        help="最多处理 N 个证券（演练用，默认 0 = 不限制）")
+                        help="最多处理 N 个证券（分批跑用，默认 0 = 不限制）")
     parser.add_argument("--slice-rows", type=int, default=DEFAULT_SLICE_ROWS,
                         help="每个输出文件最多多少条记录（默认 %d）"
                              % DEFAULT_SLICE_ROWS)
-    parser.add_argument("--dry-run", action="store_true",
-                        help="只统计不落盘")
     parser.add_argument("--no-fill-last-close", dest="fill_last_close",
                         action="store_false",
                         help="不回填 LastClose（默认回填为上一行收盘价）")
@@ -766,8 +760,6 @@ def main(argv=None):
             else env_delete
     if env_flag("CONVERT_KEEP_LATEST"):
         options.keep_latest = True
-    if options.dry_run and options.delete_source:
-        log("🧪 演练模式：删除开关虽为开启，也只打印「将删除」，不会真的删文件")
     if options.keep_latest and not options.delete_source:
         log("⚠️ --keep-latest 只在删除开关开启时生效，本次忽略")
 
@@ -779,9 +771,8 @@ def main(argv=None):
     log("仓库根 = %s" % root)
     log("源目录 = %s" % source_root)
     log("目标目录 = %s" % target_root)
-    log("切片上限 = %d 行/文件，回填前收价 = %s，演练模式 = %s"
-        % (options.slice_rows, "是" if options.fill_last_close else "否",
-           "是" if options.dry_run else "否"))
+    log("切片上限 = %d 行/文件，回填前收价 = %s"
+        % (options.slice_rows, "是" if options.fill_last_close else "否"))
     log("删除源文件 = %s%s"
         % ("是（默认）" if options.delete_source
            else "否（--no-delete-source / CONVERT_DELETE_SOURCE=false）",
@@ -791,7 +782,7 @@ def main(argv=None):
     if not source_root.is_dir():
         log("❌ 源目录不存在：%s" % source_root)
         return 1
-    if not target_root.is_dir() and not options.dry_run:
+    if not target_root.is_dir():
         log("❌ 目标目录不存在：%s（请先检出/创建新链路目录）" % target_root)
         return 1
 
@@ -803,7 +794,8 @@ def main(argv=None):
 
     totals = {"sources": 0, "slices": 0, "written": 0, "skipped_slices": 0,
               "added_rows": 0, "dropped_rows": 0, "bad_rows": 0,
-              "filled_last_close": 0, "deleted_sources": 0}
+              "filled_last_close": 0, "deleted_sources": 0,
+              "deleted_latest": 0, "deleted_incremental": 0}
     failed = []
     kept = []
     for code in codes:
@@ -825,12 +817,10 @@ def main(argv=None):
         % (len(codes), totals["sources"], totals["slices"], totals["written"],
            totals["skipped_slices"], totals["added_rows"], totals["bad_rows"],
            totals["dropped_rows"], totals["filled_last_close"]))
-    if options.dry_run:
-        log("🧪 演练模式：本次没有写入任何文件")
     if options.delete_source:
-        log("删除源文件 %d 个%s%s"
-            % (totals["deleted_sources"],
-               "（演练，未真正删除）" if options.dry_run else "",
+        log("删除源文件 %d 个（Latest.mvsv %d 个 / 增量文件 %d 个）%s"
+            % (totals["deleted_sources"], totals["deleted_latest"],
+               totals["deleted_incremental"],
                "；因数据不完整/删除失败保留 %d 个" % len(kept) if kept else ""))
     else:
         log("ℹ️ 已关闭删除开关（--no-delete-source / CONVERT_DELETE_SOURCE=false），"
