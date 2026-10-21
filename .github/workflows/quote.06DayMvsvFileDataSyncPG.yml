@@ -31,7 +31,7 @@
 #     可配仓库变量 PG_SYNC_ALLOW_PARTIAL=true 把 partial 降级为告警(仍退出 0);
 #   - 建议首轮 batchSize=50 / fileLimit=5 / enableDelete=false 试运行核对日志,
 #     确认入库与"待删除"清单无误后再开删除开关。
-name: quote.06DayMvsvFileDataSyncSupabase
+name: quote.06DayMvsvFileDataSyncPG
 
 on:
   schedule:
