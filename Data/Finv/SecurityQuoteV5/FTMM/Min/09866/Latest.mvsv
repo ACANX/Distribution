@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 6620
+# Count : 6622
 # Symbol : HK.09866
 # SecuCode : 09866
 # USC : 09866
@@ -6635,3 +6635,5 @@
 1792483080|20261020|155800|26.4|||26.42|21050|555963.4|-0.98|-3.58|26.4
 1792483140|20261020|155900|26.42|||26.42|9270|244806.8|-0.98|-3.58|26.42
 1792483200|20261020|160000|26.42|||26.44|436270|11534700.6|-0.96|-3.50|26.42
+1792546200|20261021|093000||||26.78|14240|381347.2|0.34|1.29|
+1792546260|20261021|093100|26.78|||26.86|52840|1421598.6|0.42|1.59|26.78
