@@ -101,7 +101,7 @@ jobs:
         env:
           URL_QUOTE_SYNC_BASE: ${{ secrets.URL_QUOTE_SYNC_BASE }}
           # 定时触发无 inputs, 回落到各自默认值(500 / 150)
-          PG_SYNC_BATCH_SIZE: ${{ inputs.batchSize || '500' }}
+          PG_SYNC_BATCH_SIZE: ${{ inputs.batchSize || '100' }}
           PG_SYNC_FILE_LIMIT: ${{ inputs.fileLimit || '150' }}
           PG_SYNC_ON_CONFLICT: update
           PG_SYNC_TIMEOUT: "60"
