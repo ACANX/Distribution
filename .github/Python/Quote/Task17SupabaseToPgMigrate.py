@@ -22,10 +22,12 @@ Task17 —— Supabase 存量行情数据分批迁移到自建行情服务（Ups
 
 二、分批规则（优先级：时间越早越先；每批只含单个证券）
 ----------------------------------------------------------------------------------------
-    1) 先取证券清单：一次聚合查询求出每个 usc 的最早 ts，
-          select=usc,first_ts:ts.min()&order=first_ts.asc,usc.asc
-       清单按「各证券最早数据的 ts」升序（ts 相同按 usc 升序），因此越早的行情越先迁移；
-       老版本 PostgREST 不支持聚合时自动回退为扫描 usc/ts 两列（见 §七）；
+    1) 先取证券清单：用主键 (usc, ts) 做索引扫描（不走聚合、不按 ts 全局排序），
+          select=usc,ts&order=usc.asc,ts.asc&limit=1000[&usc=gt.上一页末行证券]
+       每个 usc 首次出现的那一行就是该证券的最早 ts；清单再按「各证券最早数据的 ts」
+       升序（ts 相同按 usc 升序），因此越早的行情越先迁移。
+       （Supabase 默认禁用聚合函数，会报 PGRST123；大表又没有 ts 索引，
+       按 ts 排序会触发 statement timeout，所以两种都不采用，见 §七）
     2) 逐个证券处理：证券之间串行，一次只处理一个 usc；
     3) 单批单证券：证券内部按 ts 升序，每批最多 MIGRATE_BATCH_SIZE 行（默认 100），
        一个批次只包含一个 usc，便于目标库按证券维度定位问题；
@@ -82,9 +84,19 @@ Task17 —— Supabase 存量行情数据分批迁移到自建行情服务（Ups
         存在失败批次；或仍有行级校验失败且未开启 MIGRATE_ALLOW_SKIPPED_ROWS；
         或存在删除行数不符且未开启 MIGRATE_ALLOW_DELETE_MISMATCH。
 
-七、实现约束（自包含）
+七、实现约束（自包含 / 查询必须走索引）
 ----------------------------------------------------------------------------------------
     本文件不依赖同目录任何 Python 模块，只用标准库（urllib / json / math）。
+
+    Supabase 侧对「全表扫描 / 未索引排序 / 聚合」的容忍度很低：
+        - 聚合函数默认禁用 → PGRST123 "Use of aggregate functions is not allowed"；
+        - 大表按未索引列（如 ts）排序会 statement timeout → PostgreSQL 57014。
+    因此所有查询都命中主键 (usc, ts)：
+        - 证券清单：order=usc.asc,ts.asc + usc=gt.游标（主键前缀索引扫描）；
+        - 证券内分页：usc=eq.X + order=ts.asc + ts=gt.游标（主键范围扫描）；
+        - 删除：or=(and(usc.eq.X,ts.eq.Y),...)（主键等值条件）。
+    遇到 57014 不重试（重试无意义），直接报错并提示索引问题。
+
     注意：本脚本会**删除 Supabase 中的存量数据**，属不可逆操作。建议先在
     MIGRATE_ENABLE_DELETE=false 下演练、核对日志（读了多少、写了多少、跳过了哪些行），
     确认无误后再开删除。
@@ -134,7 +146,7 @@ LAST_CLOSE_TARGET_FIELD = "prev_close"
 
 # 分页 / 删除所需的主键列（源表必须存在）
 KEY_COLUMNS = ("usc", "ts")
-KEY_ORDER = "ts.asc,usc.asc"                    # 证券清单回退扫描 / 键集顺序
+SECURITY_ORDER = "usc.asc,ts.asc"              # 主键 (usc, ts) 顺序扫描（走索引）
 USC_ORDER = "ts.asc"                            # 单证券内部按时间升序
 
 # 默认配置（可被环境变量覆盖）
@@ -150,8 +162,8 @@ RETRY_BACKOFF_SECONDS = 3.0                     # 第 n 次重试前等待 n * b
 MAX_BATCH_ROWS = 5000                           # 目标接口 Limits.MaxBatchRows 默认值
 DELETE_KEYS_PER_REQUEST = 40                    # 单次 DELETE 的 (usc, ts) 条件数上限
 
-# 证券清单：聚合结果分页条数 / 回退扫描单页行数 / 证券数安全阀
-SECURITY_PAGE_SIZE = 1000
+# 证券清单：按主键顺序扫描的单页行数 / 证券数安全阀
+# （每页最多 1000 行索引记录，跨页用 usc=gt.上一页末行证券 推进）
 SECURITY_SCAN_PAGE = 1000
 MAX_SECURITIES = 200000
 
@@ -183,7 +195,8 @@ def _ensure_console_utf8():
     _console_configured = True
     for stream in (sys.stdout, sys.stderr):
         try:
-            stream.reconfigure(encoding="utf-8", errors="replace")
+            stream.reconfigure(encoding="utf-8", errors="replace",
+                               line_buffering=True)
         except (AttributeError, ValueError, OSError):
             pass
 
@@ -292,12 +305,6 @@ def filter_value(value):
 def encode_fragment(text):
     """对拼好的过滤片段做 URL 编码，保留 PostgREST 的结构字符"""
     return urllib.parse.quote(text, safe="=(),.")
-
-
-def keyset_condition(after):
-    """构造键集分页条件：严格大于上一行的 (ts, usc)"""
-    ts, usc = after
-    return "ts.gt.%d,and(ts.eq.%d,usc.gt.%s)" % (ts, ts, filter_value(usc))
 
 
 def cursor_key(record):
@@ -415,14 +422,11 @@ def resolve_columns(discovered):
 
 
 def security_row(row):
-    """把证券清单一行（{usc, first_ts}）转成 (usc, first_ts:int|None)"""
-    if not isinstance(row, dict):
+    """取一行清单记录的 (usc, first_ts)；无法定位时返回 None"""
+    key = cursor_key(row)
+    if key is None:
         return None
-    usc = row.get("usc")
-    text = "" if usc is None else str(usc)
-    if not text.strip():
-        return None
-    return text, _as_int(row.get("first_ts"))
+    return key[1], key[0]
 
 
 # ---------------------------------------------------------------------------
@@ -524,6 +528,13 @@ class SupabaseTable:
                 print("⚠️ %s失败：%s" % (operation, last_error))
                 continue
             if status == 429 or status >= 500:
+                if "57014" in (text or ""):
+                    # PostgreSQL statement_timeout：重试没有意义，直接给可行动提示
+                    raise MigrationError(
+                        "%s失败：语句超时（HTTP %s / PostgreSQL 57014），"
+                        "通常是查询无法走索引（大表按未索引列排序或聚合）；"
+                        "重试无效。URL %s，响应: %s"
+                        % (operation, status, self._redact(url), snippet(text)))
                 last_error = "HTTP %s：%s" % (status, snippet(text))
                 print("⚠️ %s失败：%s" % (operation, last_error))
                 continue
@@ -553,71 +564,59 @@ class SupabaseTable:
     def list_securities(self):
         """列出源表所有证券，按「该证券最早数据的 ts」升序（ts 相同按 usc 升序）
 
-        先用聚合查询一次求出每个 usc 的 min(ts)；老版本 PostgREST 不支持聚合
-        （例如返回 400 / PGRST 错误）时回退为扫描 usc/ts 两列。
+        实现：用主键 (usc, ts) 做**索引扫描**，按 usc、ts 升序分页
+        （order=usc.asc,ts.asc + usc=gt.上一页末行 usc），每个 usc 首次出现
+        的那一行就是它在源表的最早 ts。不依赖聚合函数（Supabase 默认禁用，
+        会报 PGRST123），也不按 ts 做全局排序（大表没有 ts 索引时
+        会因全表排序而 statement timeout）。
 
         :return: [(usc, first_ts), ...]；first_ts 为该证券在源表的最早 ts
         """
-        try:
-            return self._list_securities_aggregate()
-        except MigrationError as e:
-            print("⚠️ 聚合查询证券清单不可用（%s），回退为扫描 usc/ts 两列；"
-                  "大表会较慢" % e)
-            return self._scan_securities()
-
-    def _list_securities_aggregate(self):
-        """聚合查询证券清单：select=usc,first_ts:ts.min()（按 first_ts 升序分页）"""
         securities = []
-        offset = 0
+        last_usc = None            # 已记录清单里的最后一个证券
+        cursor = None              # 分页游标：上一页最后一个 usc
+        unusable = 0               # usc/ts 不可用的行（无法定位，仅告警）
+
         while True:
-            query = ("select=usc,first_ts:ts.min()&order=first_ts.asc,usc.asc"
-                     "&limit=%d&offset=%d" % (SECURITY_PAGE_SIZE, offset))
+            query = "select=usc,ts&order=%s&limit=%d" % (SECURITY_ORDER,
+                                                         SECURITY_SCAN_PAGE)
+            if cursor is not None:
+                query += "&usc=gt.%s" % encode_fragment(filter_value(cursor))
             text, _headers = self._send("GET", query, operation="列出证券")
             data = json.loads(text or "[]")
             if not isinstance(data, list):
                 raise MigrationError("列出证券失败：响应不是 JSON 数组")
+            if not data:
+                break
+
+            page_cursor = None
             for row in data:
                 parsed = security_row(row)
-                if parsed is not None:
-                    securities.append(parsed)
-            if len(data) < SECURITY_PAGE_SIZE:
-                break
-            offset += SECURITY_PAGE_SIZE
+                if parsed is None:
+                    unusable += 1
+                    continue
+                usc, first_ts = parsed
+                page_cursor = usc
+                if usc == last_usc:
+                    continue       # 同一证券的后续行：它的最早 ts 已记录
+                securities.append((usc, first_ts))
+                last_usc = usc
+
+            if page_cursor is None:
+                raise MigrationError("列出证券时遇到缺少可用 usc/ts 的行，"
+                                     "请先人工清理这些行")
+            if page_cursor == cursor:
+                raise MigrationError("列出证券时分页未能推进（游标 %r）" % cursor)
+            cursor = page_cursor
             if len(securities) > MAX_SECURITIES:
                 raise MigrationError("证券数量超过安全上限 %d，请分批迁移"
                                      % MAX_SECURITIES)
-        return securities
 
-    def _scan_securities(self):
-        """回退方案：按 (ts, usc) 升序扫描 usc/ts 两列，首次出现即该证券最早 ts"""
-        first_seen = {}
-        after = None
-        while True:
-            query = "select=usc,ts&order=%s&limit=%d" % (KEY_ORDER,
-                                                         SECURITY_SCAN_PAGE)
-            if after is not None:
-                query += "&or=(%s)" % encode_fragment(keyset_condition(after))
-            text, _headers = self._send("GET", query, operation="扫描证券清单")
-            data = json.loads(text or "[]")
-            if not isinstance(data, list):
-                raise MigrationError("扫描证券清单失败：响应不是 JSON 数组")
-            if not data:
-                break
-            cursor = None
-            for row in data:
-                key = cursor_key(row)
-                if key is None:
-                    continue
-                cursor = key
-                first_seen.setdefault(key[1], key[0])
-            if cursor is None:
-                raise MigrationError("扫描证券清单时遇到缺少可用 usc/ts 的行，"
-                                     "请先人工清理这些行")
-            after = cursor
-            if len(first_seen) > MAX_SECURITIES:
-                raise MigrationError("证券数量超过安全上限 %d，请分批迁移"
-                                     % MAX_SECURITIES)
-        return sorted(first_seen.items(), key=lambda item: (item[1], item[0]))
+        if unusable:
+            print("⚠️ 源表有 %d 行缺少可用 usc/ts（无法定位证券），已跳过；"
+                  "这些行不会被迁移，需人工清理" % unusable)
+        securities.sort(key=lambda item: (item[1], item[0]))
+        return securities
 
     def fetch_page(self, columns, limit, usc, after_ts=None):
         """读单证券的一页数据（按 ts 升序，键集分页）
@@ -975,6 +974,7 @@ def migrate(target, reader, columns, batch_size, max_batches,
     pending_uscs = []          # 仍有未迁移行的证券（校验失败 / 写入失败）
     hit_limit = False
 
+    print("🔎 正在按主键 (usc, ts) 扫描证券清单（大表需要几分钟，请稍候）...")
     securities = reader.list_securities()
     print("📋 证券清单 %d 个（按各证券最早数据的 ts 升序，先迁移时间最早的证券）"
           % len(securities))

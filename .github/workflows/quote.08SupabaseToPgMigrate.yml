@@ -100,4 +100,5 @@ jobs:
           PYTHONIOENCODING: utf-8
         shell: bash
         run: |
-          python3 .github/Python/Quote/Task17SupabaseToPgMigrate.py
+          # -u: 不缓冲 stdout, 让进度/错误在 Actions 日志里实时可见
+          python3 -u .github/Python/Quote/Task17SupabaseToPgMigrate.py
