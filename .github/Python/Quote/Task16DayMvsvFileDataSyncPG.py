@@ -123,12 +123,12 @@ TIME_MIN, TIME_MAX = 0, 235959                 # HHmmss
 LAST_CLOSE_TARGET_FIELD = "prev_close"
 
 # 默认配置（可被环境变量覆盖）
-DEFAULT_BATCH_SIZE = 500
+DEFAULT_BATCH_SIZE = 100
 DEFAULT_TIMEOUT = 60
 DEFAULT_RETRIES = 2
 DEFAULT_ON_CONFLICT = "update"
 ON_CONFLICT_CHOICES = ("skip", "update")
-MAX_BATCH_ROWS = 5000                          # Limits.MaxBatchRows 默认值
+MAX_BATCH_ROWS = 11000                          # Limits.MaxBatchRows 默认值
 RETRY_BACKOFF_SECONDS = 3.0                    # 第 n 次重试前等待 n * backoff 秒
 
 # 日志中单次展示的异常样例条数（避免刷屏）
