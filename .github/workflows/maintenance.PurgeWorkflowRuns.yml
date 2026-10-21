@@ -1,0 +1,115 @@
+# 批量清理某个 GitHub Actions workflow 的历史 runs（含文件已删除的 workflow）
+#
+# 背景：把 .github/workflows/xxx.yml 删掉后，只要它名下还有 run 记录，Actions 左侧
+# 列表里就会一直显示这个（已不存在的）workflow。本工作流用 REST API 逐条/批量删除
+# 指定 workflow 的 runs，全部删完后该条目即从列表消失。
+#
+# 删除方式（脚本内 --auto 自动选择）：
+#   - 若 secrets.PURGE_TOKEN 配置了「仓库 owner 的 PAT」（带 admin）→ 走批量接口
+#     DELETE /repos/{owner}/{repo}/actions/runs?created=<时间段>，1 次请求删一天，
+#     2.8 万条约几分钟完成；
+#   - 否则（只有默认 GITHUB_TOKEN，非 admin）→ 逐条 DELETE，受 5000 次/小时配额限制，
+#     单次运行最多删 maxMinutes 分钟的量，到点收工，重跑继续。
+#
+# 用法（在 dev 分支上手动触发）：
+#   gh workflow run maintenance.PurgeWorkflowRuns.yml --ref dev \
+#     -f workflow=295195740 -f confirm=DELETE
+#
+# 可选：
+#   - 配 Secrets → PURGE_TOKEN = 仓库 owner(ACANX) 的 PAT（scope: repo），可几分钟删完；
+#   - since 指定批量模式的起始日期（默认 2026-06-01）；
+#   - oldestFirst 勾上则从最旧的 run 开始删（默认从最新开始，网页立刻可见变化）。
+name: maintenance.PurgeWorkflowRuns
+
+on:
+  workflow_dispatch:
+    inputs:
+      workflow:
+        description: "要清理的 workflow：id / path / 名称（如 295195740、Quote01Aggregate.yml）"
+        required: true
+        default: "295195740"
+      confirm:
+        description: "确认删除请输入 DELETE"
+        required: true
+        default: ""
+      since:
+        description: "批量模式起始日期（YYYY-MM-DD）"
+        required: false
+        default: "2026-06-01"
+      maxMinutes:
+        description: "单次运行最多多少分钟（到点收工，重跑可继续）"
+        required: false
+        default: "330"
+      oldestFirst:
+        description: "从最旧的 run 开始删（默认从最新）"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  actions: write        # 删除 workflow run 需要
+  contents: read
+
+concurrency:
+  group: purge-workflow-runs
+  cancel-in-progress: false
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    # GitHub 单 job 上限 6 小时；留出余量，脚本自身按 maxMinutes 收工
+    timeout-minutes: 355
+
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 校验确认输入
+        if: ${{ inputs.confirm != 'DELETE' }}
+        shell: bash
+        run: |
+          echo "❌ 请在 confirm 输入 DELETE 后再运行（防止误删）"
+          exit 1
+
+      - name: 显示当前剩余 runs
+        env:
+          GITHUB_TOKEN: ${{ secrets.PURGE_TOKEN || secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          python3 .github/Python/PurgeWorkflowRuns.py \
+            --workflow "${{ inputs.workflow }}" --dry-run
+
+      - name: 清理 runs（--auto：有 admin 走批量，否则逐条）
+        env:
+          # 配置了 owner PAT → 批量（几分钟）；未配置 → 默认 GITHUB_TOKEN 逐条
+          GITHUB_TOKEN: ${{ secrets.PURGE_TOKEN || secrets.GITHUB_TOKEN }}
+          WORKFLOW: ${{ inputs.workflow }}
+          SINCE: ${{ inputs.since }}
+          MAX_MINUTES: ${{ inputs.maxMinutes }}
+          OLDEST_FIRST: ${{ inputs.oldestFirst }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--workflow "$WORKFLOW" --auto --yes
+                --since "$SINCE" --max-minutes "$MAX_MINUTES")
+          if [ "$OLDEST_FIRST" = "true" ]; then
+            args+=(--oldest-first)
+          fi
+          python3 .github/Python/PurgeWorkflowRuns.py "${args[@]}"
+
+      - name: 清理后剩余
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.PURGE_TOKEN || secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          python3 .github/Python/PurgeWorkflowRuns.py \
+            --workflow "${{ inputs.workflow }}" --dry-run || true
+          echo "ℹ️ 若仍有剩余（逐条模式受 5000 次/小时配额限制），再触发一次本工作流即可继续。"
