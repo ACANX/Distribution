@@ -305,9 +305,9 @@ def test_env_and_exit_code(server):
         os.environ.pop("PG_SYNC_ALLOW_PARTIAL", None)
         if allow_partial:
             os.environ["PG_SYNC_ALLOW_PARTIAL"] = "true"
-        orig_collect = PG.ftmm_task.collect_mvsv_files
+        orig_collect = PG.collect_mvsv_files
         orig_sync = PG.sync_file
-        PG.ftmm_task.collect_mvsv_files = lambda root: [(FILE_REL, 20261020, "X")]
+        PG.collect_mvsv_files = lambda root: [(FILE_REL, 20261020, "X")]
         PG.sync_file = lambda *a, **k: {"status": status, "failure_digest": "d",
                                         "rel_path": FILE_REL}
         try:
@@ -315,7 +315,7 @@ def test_env_and_exit_code(server):
             with redirect_stdout(out):
                 return PG.main(), out.getvalue()
         finally:
-            PG.ftmm_task.collect_mvsv_files = orig_collect
+            PG.collect_mvsv_files = orig_collect
             PG.sync_file = orig_sync
             os.environ.pop("PG_SYNC_ALLOW_PARTIAL", None)
 
@@ -328,7 +328,7 @@ def test_env_and_exit_code(server):
 
 
 def main():
-    PG.ftmm_task._ensure_console_utf8()
+    PG._ensure_console_utf8()
     server = FakeServer()
     tmp = tempfile.mkdtemp()
     try:

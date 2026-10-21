@@ -20,9 +20,12 @@ public.finv_quote_secu_kline_min，作为 Supabase 入库数据的镜像副本�
     - 无鉴权，靠安全组/白名单限制来源 IP（GitHub Actions 出口 IP 需放行）。
 
 与 Task16DayMvsvFileDataSyncSupabase 的关系（同一份数据、两个目的地）：
-    - 二者读取的目录、文件排序、fileLimit 完全一致（本脚本复用其
-      collect_mvsv_files / to_row / chunks / 环境变量工具，保证口径不漂移；
-      仅数据行解析改为容错版 parse_mvsv_rows，见 §三）；
+    - 本脚本**完全自包含**：源目录、文件命名规则、排序、列映射、环境变量读取
+      等工具一律在本文件内实现（见 §六），不 import 任何同目录脚本，
+      因此删除 / 重命名 Supabase 脚本不会影响本脚本运行；
+    - 两条链路的读取口径（目录、文件名排序、fileLimit 语义）必须保持一致，
+      本脚本对数据行采用容错解析 parse_mvsv_rows（见 §三），
+      修改任一侧的目录 / 列映射时请同步另一侧；
     - 本脚本只写数据、**不删除任何源文件**：源文件的删除仍由 Task16
       Supabase 任务在入库成功且删除开关打开时执行；
     - 工作流里本步骤排在 Supabase 步骤之前，因此本步骤失败即中断后续步骤，
@@ -58,7 +61,7 @@ public.finv_quote_secu_kline_min，作为 Supabase 入库数据的镜像副本�
     URL_QUOTE_SYNC_BASE   目标服务基础地址（含协议与端口，如 http://1.2.3.4:18001；
                           缺协议时按 http:// 补全）；缺失即致命退出
     PG_SYNC_BATCH_SIZE    单请求提交行数（默认 500，上限 5000，超出自动收敛）
-    PG_SYNC_FILE_LIMIT    单次运行处理的文件数上限（默认 50，与 Supabase 任务对齐）
+    PG_SYNC_FILE_LIMIT    单次运行处理的文件数上限（默认 50，与 Supabase 任务取值对齐）
     PG_SYNC_ON_CONFLICT   冲突策略 skip / update（默认 update，只接受这两个值）
     PG_SYNC_TIMEOUT       单请求超时秒数（默认 60）
     PG_SYNC_RETRIES       失败重试次数（默认 2；仅对网络错误 / 5xx / 429 重试）
@@ -74,27 +77,29 @@ public.finv_quote_secu_kline_min，作为 Supabase 入库数据的镜像副本�
     说明：本步骤排在 Supabase 入库步骤之前，退出码 1 会中断后续步骤，
     从而保证「源文件在镜像写入未完整成功时不会被删除」。
 
+六、实现约束（自包含）
+----------------------------------------------------------------------------------------
+    本文件不依赖同目录任何 Python 模块：文件收集 / 列映射 / 分批 / 环境变量 /
+    控制台编码等工具都在下方就地实现，只用标准库。修改 FTMM V5 的目录或列格式时，
+    需要同时改本文件与 Task16 Supabase 脚本，两侧口径要保持一致。
+
 【环境要求】Python 3.8+，仅标准库；需能直连 URL_QUOTE_SYNC_BASE 指定的服务。
 """
 
 import json
 import math
 import os
+import re
 import sys
 import time as time_module
 import urllib.error
 import urllib.parse
 import urllib.request
 
-# 本文件位于 <仓库根>/.github/Python/Quote/ 下，与 Task16 Supabase 脚本同级；
-# 同目录的模块直接 import（脚本运行时目录已在 sys.path，-m / 测试场景下补一次）。
+# 本文件位于 <仓库根>/.github/Python/Quote/ 下。
+# 本脚本不 import 同目录任何脚本（含 Task16 Supabase），所需的解析 / 收集 / 分批 /
+# 环境变量工具全部在下方就地实现，仅用标准库。
 _HERE = os.path.dirname(os.path.abspath(__file__))       # <仓库根>/.github/Python/Quote
-if _HERE not in sys.path:
-    sys.path.insert(0, _HERE)
-
-# 复用 FTMM 解析 / 文件收集 / 分批 / 环境变量工具，避免两条链路口径分叉。
-# 该模块同时会把 .github/Python 加入 sys.path 并引入 GitHubCommitContent（纯标准库）。
-import Task16DayMvsvFileDataSyncSupabase as ftmm_task  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # 常量
@@ -136,6 +141,205 @@ SAMPLE_LIMIT = 5
 
 USER_AGENT = "Distribution-QuoteSync/1.0 (+https://github.com/ACANX/Distribution)"
 
+# 源目录与文件名规则（quote 分支内相对路径）
+SOURCE_DIR = "Archive/Finv/SecuQuote/FTMM/V5"
+SRC_DATE_DIGITS = 8                             # 文件名尾段日期 yyyyMMdd 位数
+DEFAULT_FILE_LIMIT = 50                        # 单次文件数上限默认值
+DEFAULT_BRANCH = "quote"                       # 分支名默认值
+
+# 文件头字段名键：英文全名优先（# FieldName），中文名兜底（# 字段名称）
+FIELD_HEADER_KEYS = ("字段名称", "FieldName")
+
+# 前收价列在文件头里的键（英文 / 中文）
+LAST_CLOSE_KEYS = ("LastClose", "前收价")
+
+# mvsv 数据列（# FieldName 英文全名 / # 字段名称 中文名）→ 接口字段（wire 键）映射；
+# 数值列类型：int / float。短名 t 同时表示 Time 与 Turnover，故不采用 # Field 短名。
+COLUMN_TYPES = {
+    # 英文全名（# FieldName）
+    "Timestamp": ("ts", "int"),
+    "Date": ("date", "int"),
+    "Time": ("time", "int"),
+    "Open": ("open", "float"),
+    "High": ("high", "float"),
+    "Low": ("low", "float"),
+    "Close": ("close", "float"),
+    "Volume": ("volume", "int"),
+    "Turnover": ("turnover", "float"),
+    "ChangePrice": ("change_price", "float"),
+    "ChangeRatio": ("change_ratio", "float"),
+    # 中文名（# 字段名称，缺 # FieldName 时兜底）
+    "时间戳": ("ts", "int"),
+    "日期": ("date", "int"),
+    "时间": ("time", "int"),
+    "开盘价": ("open", "float"),
+    "最高价": ("high", "float"),
+    "最低价": ("low", "float"),
+    "收盘价": ("close", "float"),
+    "成交量": ("volume", "int"),
+    "成交额": ("turnover", "float"),
+    "涨跌值": ("change_price", "float"),
+    "涨跌幅": ("change_ratio", "float"),
+}
+
+
+# ---------------------------------------------------------------------------
+# 通用工具（自包含实现，不依赖同目录脚本）
+# ---------------------------------------------------------------------------
+
+_console_configured = False
+
+
+def _ensure_console_utf8():
+    """把 stdout/stderr 重配置为 UTF-8（errors=replace），仅首次调用生效
+
+    防止 Windows 遗留控制台 / 非 UTF-8 locale 下输出中文时抛 UnicodeEncodeError
+    导致静默崩溃。重配置失败（如流已被重定向接管）时静默跳过。
+    """
+    global _console_configured
+    if _console_configured:
+        return
+    _console_configured = True
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
+def unquote(value):
+    """去掉元信息取值外层成对的双引号"""
+    if len(value) >= 2 and value.startswith('"') and value.endswith('"'):
+        return value[1:-1]
+    return value
+
+
+def to_row(columns, values, column_types):
+    """把一行数据按文件头列序转为 wire 键 dict
+
+    :param columns: 列名列表（来自文件头 # FieldName / # 字段名称）
+    :param values: 该行的各列取值（未经 strip）
+    :param column_types: 文件头列名 → (wire 键, 类型) 映射
+    :return: 已赋值的记录 dict（空列不出现在 dict 中）
+    :raises ValueError: 数值列内容非法时抛出
+    """
+    row = {}
+    for i, raw_value in enumerate(values):
+        column = columns[i]
+        mapping = column_types.get(column)
+        if mapping is None:
+            continue
+        wire_key, value_type = mapping
+        value = raw_value.strip()
+        if not value:
+            continue  # 空列留空：不写入 dict，下发时即“该字段不写”
+        if value_type == "int":
+            try:
+                row[wire_key] = int(value)
+            except ValueError:
+                row[wire_key] = int(float(value))
+        else:
+            row[wire_key] = float(value)
+    return row
+
+
+def chunks(source, size):
+    """把列表切成固定大小的片"""
+    return [source[i:i + size] for i in range(0, len(source), size)]
+
+
+def natural_key(code):
+    """证券标识的自然排序键：数字段按数值比较，其余按小写字符串比较"""
+    parts = re.split(r"(\d+)", code)
+    key = []
+    for part in parts:
+        if not part:
+            continue
+        if part.isdigit():
+            key.append((0, int(part), ""))
+        else:
+            key.append((1, 0, part.lower()))
+    return key
+
+
+def collect_mvsv_files(root):
+    """收集 SOURCE_DIR 下可同步的 .mvsv 文件并按（文件名日期, 证券标识自然排序）升序
+
+    递归遍历、排除 "." 开头的隐藏目录与隐藏文件；文件名须为
+    {Region}_{Market}_{USC}_{TypeKLine}_{Provider}_Day_{yyyyMMdd}.mvsv（尾段 8 位
+    数字日期），不满足者跳过并记日志。
+
+    :param root: 仓库根目录
+    :return: [(rel_path, date, code), ...] 已按日期升序、证券标识自然排序升序
+    """
+    base = os.path.join(root, *SOURCE_DIR.split("/"))
+    entries = []
+    if not os.path.isdir(base):
+        print("⚠️ 源目录不存在：%s" % base)
+        return entries
+    for dirpath, dirnames, filenames in os.walk(base):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        for name in filenames:
+            if name.startswith(".") or not name.lower().endswith(".mvsv"):
+                continue
+            rel_path = os.path.relpath(os.path.join(dirpath, name), root)
+            rel_path = rel_path.replace(os.sep, "/")
+            stem = os.path.splitext(name)[0]
+            segs = stem.split("_")
+            date_str = segs[-1] if segs else ""
+            # 去掉末尾的 {TypeKLine}_{Provider}_Day_{yyyyMMdd} 4 段作为证券标识
+            code = "_".join(segs[:-4]) if len(segs) > 4 else stem
+            if len(segs) < 4 or len(date_str) != SRC_DATE_DIGITS \
+                    or not date_str.isdigit():
+                print("⏭️ 跳过（文件名不符合 {Region}_{Market}_{USC}_{TypeKLine}"
+                      "_{Provider}_Day_{8位日期} 模式）：%s" % rel_path)
+                continue
+            entries.append((rel_path, int(date_str), code))
+    entries.sort(key=lambda e: (e[1], natural_key(e[2])))
+    return entries
+
+
+def repo_root():
+    """返回仓库根目录（绝对路径）；本脚本固定位于 <仓库根>/.github/Python/Quote/ 下
+
+    即 Quote/ → Python/ → .github/ → 仓库根：从 _HERE 起上溯三级。
+    """
+    return os.path.dirname(os.path.dirname(os.path.dirname(_HERE)))
+
+
+def resolve_branch():
+    """解析要处理的分支名：命令行参数 → CURR_BRANCH → GITHUB_REF_NAME → 默认 quote"""
+    if len(sys.argv) > 1 and sys.argv[1].strip():
+        return sys.argv[1].strip()
+    for env_key in ("CURR_BRANCH", "GITHUB_REF_NAME"):
+        value = os.environ.get(env_key, "").strip()
+        if value:
+            return value
+    return DEFAULT_BRANCH
+
+
+def env_int(name, default):
+    """读取整数型环境变量；非法值告警后取默认值"""
+    value = os.environ.get(name, "").strip()
+    if not value:
+        return default
+    try:
+        parsed = int(value)
+        if parsed <= 0:
+            raise ValueError
+        return parsed
+    except ValueError:
+        print("⚠️ 环境变量 %s=%r 不是正整数，回退默认值 %d" % (name, value, default))
+        return default
+
+
+def env_bool(name, default=False):
+    """读取布尔型环境变量（"true"/"1"/"yes"/"on" 为真，大小写不敏感）"""
+    value = os.environ.get(name, "").strip().lower()
+    if not value:
+        return default
+    return value in ("true", "1", "yes", "on")
+
 
 # ---------------------------------------------------------------------------
 # 数值/字段校验
@@ -176,8 +380,8 @@ def build_column_types():
 
     :return: 可供 parse_mvsv/to_row 使用的列映射 dict
     """
-    column_types = dict(ftmm_task.COLUMN_TYPES)
-    for key in ftmm_task.LAST_CLOSE_KEYS:
+    column_types = dict(COLUMN_TYPES)
+    for key in LAST_CLOSE_KEYS:
         column_types[key] = (LAST_CLOSE_TARGET_FIELD, "float")
     return column_types
 
@@ -446,10 +650,11 @@ def merge_upsert_results(left, right):
 def parse_mvsv_rows(path, column_types):
     """解析 FTMM V5 行情文件：单行数值非法只丢该行，不放弃整份文件
 
-    列头 / 元信息规则与 ftmm_task.parse_mvsv 完全一致（复用其 unquote /
-    FIELD_HEADER_KEYS / to_row），差异只在于数据行的数值解析失败时不抛异常，
-    而是把该行记入 bad_rows 继续解析——行情文件是机器生成的，个别脏行不应让整份
-    文件长期卡在队列里；但脏行仍会进日志并影响文件状态（partial）。
+    列头 / 元信息规则与 Task16 Supabase 脚本的 parse_mvsv 完全一致（同样用
+    本文件的 unquote / FIELD_HEADER_KEYS / to_row），差异只在于数据行的数值解析
+    失败时不抛异常，而是把该行记入 bad_rows 继续解析——行情文件是机器生成的，
+    个别脏行不应让整份文件长期卡在队列里；但脏行仍会进日志并影响文件状态
+    （partial）。
 
     :param path: 文件路径
     :param column_types: 文件头列名 → (wire 键, 类型) 映射
@@ -471,9 +676,9 @@ def parse_mvsv_rows(path, column_types):
                     continue
                 key, value = body.split(":", 1)
                 key = key.strip()
-                value = ftmm_task.unquote(value.strip())
+                value = unquote(value.strip())
                 meta.setdefault(key, value)
-                if key in ftmm_task.FIELD_HEADER_KEYS:
+                if key in FIELD_HEADER_KEYS:
                     columns = value.split("|")
                 continue
             if columns is None:
@@ -484,7 +689,7 @@ def parse_mvsv_rows(path, column_types):
                                  % (len(values), len(columns))))
                 continue
             try:
-                rows.append(ftmm_task.to_row(columns, values, column_types))
+                rows.append(to_row(columns, values, column_types))
             except (ValueError, TypeError) as e:
                 bad_rows.append((line_no, "数值非法（%s）" % e))
 
@@ -555,7 +760,7 @@ def sync_file(client, root, rel_path, batch_size, column_types):
         raise ValueError("全部行都未通过校验，无可下发数据")
 
     batches = []
-    for batch_no, chunk in enumerate(ftmm_task.chunks(items, batch_size), 1):
+    for batch_no, chunk in enumerate(chunks(items, batch_size), 1):
         batches.append(upsert_batch(client, batch_no, chunk))
     return summarize_file(rel_path, len(rows) + len(bad_rows), dropped_rows,
                           len(dropped_fields), batches)
@@ -690,15 +895,15 @@ def resolve_on_conflict():
 
 def main():
     """主流程：配置 → 收集排序 → 逐文件分批 Upsert → 汇总"""
-    ftmm_task._ensure_console_utf8()
-    branch = ftmm_task.resolve_branch()
-    batch_size = min(ftmm_task.env_int("PG_SYNC_BATCH_SIZE", DEFAULT_BATCH_SIZE),
+    _ensure_console_utf8()
+    branch = resolve_branch()
+    batch_size = min(env_int("PG_SYNC_BATCH_SIZE", DEFAULT_BATCH_SIZE),
                      MAX_BATCH_ROWS)
-    file_limit = ftmm_task.env_int("PG_SYNC_FILE_LIMIT", ftmm_task.DEFAULT_FILE_LIMIT)
-    timeout = ftmm_task.env_int("PG_SYNC_TIMEOUT", DEFAULT_TIMEOUT)
+    file_limit = env_int("PG_SYNC_FILE_LIMIT", DEFAULT_FILE_LIMIT)
+    timeout = env_int("PG_SYNC_TIMEOUT", DEFAULT_TIMEOUT)
     retries = env_int_zero("PG_SYNC_RETRIES", DEFAULT_RETRIES)
     on_conflict = resolve_on_conflict()
-    allow_partial = ftmm_task.env_bool("PG_SYNC_ALLOW_PARTIAL", False)
+    allow_partial = env_bool("PG_SYNC_ALLOW_PARTIAL", False)
 
     print("======== 自建行情服务同步开始（Task16 / FTMM V5 / PG）========")
     print("分支 (branch) = %s" % branch)
@@ -721,10 +926,10 @@ def main():
     print("目标服务 = %s" % client.base_url)
 
     column_types = build_column_types()
-    root = ftmm_task.repo_root()
+    root = repo_root()
     print("仓库根 = %s" % root)
 
-    all_files = ftmm_task.collect_mvsv_files(root)
+    all_files = collect_mvsv_files(root)
     print("收集完成：FTMM/V5 目录下可同步的 .mvsv 共 %d 个（按文件名日期升序、证券标识自然排序）"
           % len(all_files))
     if not all_files:
