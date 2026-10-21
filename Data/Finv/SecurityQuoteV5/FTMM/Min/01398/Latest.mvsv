@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 6620
+# Count : 6622
 # Symbol : HK.01398
 # SecuCode : 01398
 # USC : 01398
@@ -6635,3 +6635,5 @@
 1792483080|20261020|155800|7.485|||7.49|428000|3204998|-0.1|-1.32|7.485
 1792483140|20261020|155900|7.49|||7.485|657000|4920340|-0.105|-1.38|7.49
 1792483200|20261020|160000|7.485|||7.49|21625000|161970025|-0.1|-1.32|7.485
+1792546200|20261021|093000||||7.55|1342000|10132100|0.06|0.80|
+1792546260|20261021|093100|7.55|||7.495|1517000|11374990|0.005|0.07|7.55
