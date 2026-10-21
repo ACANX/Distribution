@@ -1,0 +1,49 @@
+name: quote.02ArchiveDay
+on:
+  workflow_dispatch:
+    inputs:
+      codes:
+        description: "仅处理指定证券（逗号分隔，留空=全部）"
+        required: false
+        default: ""
+  schedule:
+    - cron: "20 16 * * 2,3,4,5,6,0"
+concurrency:
+  group: quote-all
+  cancel-in-progress: false
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: quote
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r .github/Python/Quote/requirements.txt
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: RunTask02ArchiveDaily
+        env:
+          QUOTE_CODES: ${{ github.event.inputs.codes }}
+        run: python .github/Python/Quote/Task02ArchiveDaily.py
+      # Task02 已在上一步独立完成 add/commit/push; Task12 走 Contents API 直写远端,
+      # 不产生本地 commit, 两个任务严格串行、递交互不影响
+      - name: RunTask12ArchiveDaily
+        env:
+          QUOTE_CODES: ${{ github.event.inputs.codes }}
+          GITHUB_TOKEN: ${{ secrets.GIT_COMMIT_TOKEN }}
+          # 固定目标分支, 与 checkout 的 ref 保持一致 (同 Task11)
+          # 不跟随触发 ref: workflow_dispatch 从 Actions 页面触发时默认是仓库默认分支 dev
+          QUOTE_BRANCH: quote
+        run: python .github/Python/Quote/Task12ArchiveDaily.py
+      - name: VerifyCleanPush
+        run: |
+          git log origin/quote..HEAD --oneline | (! read)
+          git status --short | (! read)
