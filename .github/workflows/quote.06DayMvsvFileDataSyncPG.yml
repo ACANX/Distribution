@@ -81,21 +81,21 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: 运行入库脚本
-        env:
-          GIT_COMMIT_TOKEN: ${{ secrets.GIT_COMMIT_TOKEN }}
-          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          SUPABASE_BATCH_SIZE: ${{ inputs.batchSize || '50' }}
-          SUPABASE_FILE_LIMIT: ${{ inputs.fileLimit || '150' }}
-          # 手动触发取输入值; 定时触发(无 inputs)回落到仓库变量
-          # SUPABASE_SCHEDULED_DELETE, 未配置时脚本端默认安全模式(不删)
-          SUPABASE_ENABLE_DELETE: ${{ github.event_name == 'workflow_dispatch' && inputs.enableDelete || vars.SUPABASE_SCHEDULED_DELETE }}
-          CURR_BRANCH: ${{ inputs.branch || github.ref_name }}
-          PYTHONIOENCODING: utf-8
-        shell: bash
-        run: |
-          python3 .github/Python/Quote/Task06DayMvsvFileDataSyncSupabase.py
+      # - name: 运行入库脚本
+      #   env:
+      #     GIT_COMMIT_TOKEN: ${{ secrets.GIT_COMMIT_TOKEN }}
+      #     SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      #     SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      #     SUPABASE_BATCH_SIZE: ${{ inputs.batchSize || '50' }}
+      #     SUPABASE_FILE_LIMIT: ${{ inputs.fileLimit || '150' }}
+      #     # 手动触发取输入值; 定时触发(无 inputs)回落到仓库变量
+      #     # SUPABASE_SCHEDULED_DELETE, 未配置时脚本端默认安全模式(不删)
+      #     SUPABASE_ENABLE_DELETE: ${{ github.event_name == 'workflow_dispatch' && inputs.enableDelete || vars.SUPABASE_SCHEDULED_DELETE }}
+      #     CURR_BRANCH: ${{ inputs.branch || github.ref_name }}
+      #     PYTHONIOENCODING: utf-8
+      #   shell: bash
+      #   run: |
+      #     python3 .github/Python/Quote/Task06DayMvsvFileDataSyncSupabase.py
 
       # 先增量镜像到自建行情服务(PG): 与下面的 Supabase 步骤读取同一批 FTMM/V5
       # 文件、同一 fileLimit; 本步骤不删除源文件, 失败即中断后续步骤(见文件头说明)
