@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 5070
+# Count : 5072
 # Symbol : US.CIHKY
 # SecuCode : CIHKY
 # USC : CIHKY
@@ -5085,3 +5085,5 @@
 1792612680|20261022|035800|33.625|||33.625|0|0|-0.105|-0.31|33.625
 1792612740|20261022|035900|33.625|||33.625|8|268.72|-0.105|-0.31|33.625
 1792612800|20261022|040000|33.625|||33.625|0|0|-0.105|-0.31|33.625
+1792675860|20261022|213100||||33.625|0|0|0|0.00|
+1792675920|20261022|213200|33.625|||33.625|1|33.99|0|0.00|33.625
