@@ -3,10 +3,10 @@ on:
   push:
     branches: [quote]
     paths:
-      - 'Data/Finv/SecuQuote/**/*.mvsv'
-      - '!Data/Finv/SecuQuote/**/Latest.mvsv'
-      - 'Data/Finv/SecurityQuoteV5/FTMM/**/*.mvsv'
-      - '!Data/Finv/SecurityQuoteV5/FTMM/**/Latest.mvsv'
+      - 'Data/Finv/SecurityQuoteV5/FTMM/Min/GCMain/*.mvsv'
+      - 'Data/Finv/SecurityQuoteV5/FTMM/Min/PAXG/*.mvsv'
+      - '!Data/Finv/SecurityQuoteV5/FTMM/Min/GCMain/Latest.mvsv'
+      - '!Data/Finv/SecurityQuoteV5/FTMM/Min/PAXG/Latest.mvsv'
   workflow_dispatch:
     inputs:
       codes:
