@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 8580
+# Count : 8582
 # Symbol : US.PDD
 # SecuCode : PDD
 # USC : PDD
@@ -8595,3 +8595,5 @@
 1792699080|20261023|035800|79.18|||79.14|33502|2651757.937|0.42|0.53|79.18
 1792699140|20261023|035900|79.14|||79.155|53832|4260213.658|0.435|0.55|79.14
 1792699200|20261023|040000|79.155|||79.17|705409|55846505.205|0.45|0.57|79.155
+1792762260|20261023|213100||||80.02|64419|5118174.213|0.85|1.07|
+1792762320|20261023|213200|80.02|||79.58|27673|2211430.257|0.41|0.52|80.02
