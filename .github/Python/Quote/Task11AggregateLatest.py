@@ -5,7 +5,7 @@
 原始文件命名: {Code}_Min_YYYYMMDD_HHMMSS.mvsv (多次采集生成, 增量覆盖)
 
 数据格式 (FTMM 原生 12 列, 与 SecuQuote 的 11 列格式不兼容):
-  ts|d|t|o|h|l|c|v|t|cp|cr|lc
+  ts|da|ti|o|h|l|c|v|t|cp|cr|lc
   = Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose
 
 递交方式: 优先走 GitHub Contents REST API 直写远端分支。
