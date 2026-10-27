@@ -5,7 +5,7 @@
 # FieldName : "Timestamp|Date|Time|Open|High|Low|Close|Volume|Turnover|ChangePrice|ChangeRatio|LastClose"
 # FieldType : "Int|Int|Int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal"
 # TypeKLine : Min
-# Count : 4820
+# Count : 4822
 # Symbol : SZ.159715
 # SecuCode : 159715
 # USC : 159715
@@ -4835,3 +4835,5 @@
 1792997880|20261026|145800|0.995|||0.995|1000|995|-0.017|-1.68|0.995
 1792997940|20261026|145900|0.995|||0.995|0|0|-0.017|-1.68|0.995
 1792998000|20261026|150000|0.995|||0.995|34600|34427|-0.017|-1.68|0.995
+1793064600|20261027|093000||||0.995|200|199|0|0.00|
+1793064660|20261027|093100|0.995|||1.004|14729500|14776203.3|0.009|0.90|0.995
