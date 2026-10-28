@@ -41,18 +41,18 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: 检出仓库(指定分支)
+      - name: CheckoutRepository
         uses: actions/checkout@v5
         with:
           ref: ${{ inputs.currBranch || github.ref_name }}
           fetch-depth: 0
 
-      - name: 设置Python
+      - name: SetupPython
         uses: actions/setup-python@v5
         with:
           python-version: "3.14"
 
-      - name: 运行同步脚本
+      - name: RunSyncScript
         env:
           GIT_COMMIT_TOKEN: ${{ secrets.GIT_COMMIT_TOKEN }}
           CURR_BRANCH: ${{ inputs.currBranch || github.ref_name }}

@@ -77,19 +77,19 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: 检出仓库(固定 quote 分支)
+      - name: CheckoutRepository
         uses: actions/checkout@v5
         with:
           # 按需求固定检出 quote 分支, 不随触发分支/默认分支变化
           ref: quote
           fetch-depth: 1
 
-      - name: 设置Python
+      - name: SetupPython
         uses: actions/setup-python@v5
         with:
           python-version: "3.14"
 
-      - name: 运行 Supabase 存量迁移
+      - name: RunSupabaseMigrate
         env:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}

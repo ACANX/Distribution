@@ -20,11 +20,11 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -r .github/Python/Quote/requirements.txt
-      - name: Configure git identity
+      - name: ConfigureGitIdentity
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-      - name: Run Task04ArchiveSecuQuoteExecLogDaily
+      - name: RunTask04ArchiveSecuQuoteExecLogDaily
         run: python .github/Python/Quote/Task04ArchiveSecuQuoteExecLogDaily.py
       - name: VerifyCleanPush
         run: |

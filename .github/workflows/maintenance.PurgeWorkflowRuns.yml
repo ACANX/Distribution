@@ -61,24 +61,24 @@ jobs:
     timeout-minutes: 355
 
     steps:
-      - name: 检出仓库
+      - name: CheckoutRepository
         uses: actions/checkout@v5
         with:
           fetch-depth: 1
 
-      - name: 设置 Python
+      - name: SetupPython
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: 校验确认输入
+      - name: ValidateConfirmInput
         if: ${{ inputs.confirm != 'DELETE' }}
         shell: bash
         run: |
           echo "❌ 请在 confirm 输入 DELETE 后再运行（防止误删）"
           exit 1
 
-      - name: 显示当前剩余 runs
+      - name: ShowRemainingRuns
         env:
           GITHUB_TOKEN: ${{ secrets.PURGE_TOKEN || secrets.GITHUB_TOKEN }}
         shell: bash
@@ -86,7 +86,7 @@ jobs:
           python3 .github/Python/PurgeWorkflowRuns.py \
             --workflow "${{ inputs.workflow }}" --dry-run
 
-      - name: 清理 runs（--auto：有 admin 走批量，否则逐条）
+      - name: PurgeWorkflowRuns
         env:
           # 配置了 owner PAT → 批量（几分钟）；未配置 → 默认 GITHUB_TOKEN 逐条
           GITHUB_TOKEN: ${{ secrets.PURGE_TOKEN || secrets.GITHUB_TOKEN }}
@@ -104,7 +104,7 @@ jobs:
           fi
           python3 .github/Python/PurgeWorkflowRuns.py "${args[@]}"
 
-      - name: 清理后剩余
+      - name: ShowRemainingAfterPurge
         if: always()
         env:
           GITHUB_TOKEN: ${{ secrets.PURGE_TOKEN || secrets.GITHUB_TOKEN }}

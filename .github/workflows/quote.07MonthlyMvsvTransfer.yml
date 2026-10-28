@@ -58,19 +58,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Checkout quote (脚本与源数据所在分支)
+      - name: CheckoutQuoteBranch
         uses: actions/checkout@v5
         with:
           ref: quote
           fetch-depth: 1
 
-      - name: Setup Python
+      - name: SetupPython
         uses: actions/setup-python@v5
         with:
           python-version: "3.14"
 
       # 脚本仅标准库; 保留依赖安装步骤与其它工作流对齐, 以备将来引入第三方库
-      - name: Install dependencies
+      - name: InstallDependencies
         run: |
           if compgen -G ".github/requirements*.txt" > /dev/null; then
             pip install -r .github/requirements*.txt
@@ -80,7 +80,7 @@ jobs:
             echo "无 requirements 文件, 跳过依赖安装(仅标准库)"
           fi
 
-      - name: Transfer monthly mvsv to acdnx/Distribution
+      - name: TransferMonthlyMvsvToDistribution
         env:
           GIT_COMMIT_TOKEN: ${{ secrets.GIT_COMMIT_TOKEN }}
           # 转存端身份(须与脚本内置默认一致; 两个仓库是独立仓库, 不是大小写变体)

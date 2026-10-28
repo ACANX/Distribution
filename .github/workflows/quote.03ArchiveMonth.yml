@@ -29,7 +29,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-      - name: Run Task3ArchiveMonthly
+      - name: RunTask3ArchiveMonthly
         env:
           QUOTE_CODES: ${{ github.event.inputs.codes }}
         run: python .github/Python/Quote/Task03ArchiveMonthly.py
