@@ -12,12 +12,25 @@ Task16 —— FTMM V5 行情文件增量同步到自建行情服务（Upsert RES
 增量写到另一台自建行情服务（FinvQuoteDataDeDup）的 PostgreSQL 表
 cdeu.finv_quote_secu_kline_min，作为 Supabase 入库数据的镜像副本。
 
-接口约定见 .github/Python/ApiUpsertBatchDelete.md：
+接口约定（请求体字段清单见 .github/Python/ApiUpsertBatchDelete.md，外部 OpenAPI
+契约见 FinvQuant 仓库 Docs/OpenAPI/Quote/Cdeu/Min/Upsert.md）：
     - 请求体 {"items": [...]}，字段集合固定 17 列，接口侧 extra="forbid"，
       多传任何未定义字段都会 422；
     - 主键 (usc, ts)；onConflict=skip 只补缺 / onConflict=update 覆盖（默认）；
-    - 返回 {"affected": n, "mode": "..."}；单次上限 Limits.MaxBatchRows（默认 5000）；
-    - 无鉴权，靠安全组/白名单限制来源 IP（GitHub Actions 出口 IP 需放行）。
+    - 成功响应统一信封 {code, data, message}，业务字段在 data 节点：
+          {"code": 0, "data": {"affected": n, "mode": "skip|update"},
+           "message": "OK"}
+      code ∈ {0, 1, 200, 202} 均视为成功（服务端默认输出 0），其余 code 按业务
+      失败处理；data.affected / data.mode 缺失时按「未回传」记录，不误判成功；
+    - 失败响应为非 2xx + 错误信封（**不再套一层 data**）：
+          {"code": 211102, "message": "请求内存在重复主键", "detail": "...",
+           "request_id": "6f1c0f7a9d2e4b0c",
+           "error": {"code": 211102, "catalog_version": "finvquant-1",
+                     "retryable": false}}
+      日志会带上 code / detail / request_id；是否重试以 HTTP 状态（5xx / 429）
+      为主，error.retryable=true 时同样重试（211301 / 211302 等可重试错误）；
+    - 单次上限 Limits.MaxBatchRows（默认 5000）；413 时自动二分重发；
+    - 暂无鉴权，靠安全组/白名单限制来源 IP（GitHub Actions 出口 IP 需放行）。
 
 与 Task16DayMvsvFileDataSyncSupabase 的关系（同一份数据、两个目的地）：
     - 本脚本**完全自包含**：源目录、文件命名规则、排序、列映射、环境变量读取
@@ -54,7 +67,7 @@ cdeu.finv_quote_secu_kline_min，作为 Supabase 入库数据的镜像副本。
     文件状态分三档：
         ok       全部批次成功，无行/字段被丢弃；
         partial  批次全部成功，但有行或字段被丢弃（数据不完整）；
-        failed   存在批次失败（网络/服务端/affected 不符）或文件不可解析。
+        failed   存在批次失败（网络 / 服务端 / 业务错误码 / affected 不符）或文件不可解析。
 
 四、环境变量（凭据与配置一律经环境注入，严禁写进源码或日志）
 ----------------------------------------------------------------------------------------
@@ -134,6 +147,9 @@ DEFAULT_RETRIES = 2
 DEFAULT_ON_CONFLICT = "update"
 ON_CONFLICT_CHOICES = ("skip", "update")
 MAX_BATCH_ROWS = 11000                          # Limits.MaxBatchRows 默认值
+
+# 外部 OpenAPI 成功信封的 code 取值（服务端默认输出 0，1 / 200 / 202 为兼容取值）
+SUCCESS_CODES = frozenset((0, 1, 200, 202))
 RETRY_BACKOFF_SECONDS = 3.0                    # 第 n 次重试前等待 n * backoff 秒
 
 # 日志中单次展示的异常样例条数（避免刷屏）
@@ -518,8 +534,10 @@ def post_json(url, body_bytes, timeout):
 class QuoteSyncClient:
     """目标行情服务 Upsert 接口的最小客户端（仅标准库 urllib）
 
-    负责：URL 拼接、请求体序列化、状态码语义（413 拆分、5xx/429 退避重试）、
-    响应解析（affected / mode）。无鉴权，服务端靠来源 IP 白名单。
+    负责：URL 拼接、请求体序列化、状态码语义（413 拆分、5xx/429/
+    error.retryable 退避重试）、成功信封解析（code / data.affected / data.mode）
+    与错误信封解析（message / detail / request_id）。暂无鉴权，服务端靠来源 IP
+    白名单。
     """
 
     def __init__(self, base_url, on_conflict=DEFAULT_ON_CONFLICT,
@@ -579,13 +597,15 @@ class QuoteSyncClient:
 
             if 200 <= status < 300:
                 return parse_upsert_response(text, len(items))
+
+            detail, retryable = parse_error_response(status, text)
             if status == 413:
-                raise PayloadTooLargeError("HTTP 413：请求过大")
-            if status == 429 or status >= 500:
-                last_error = "HTTP %s：%s" % (status, snippet(text))
+                raise PayloadTooLargeError(detail)
+            if retryable or status == 429 or status >= 500:
+                last_error = detail
                 print("⚠️ 提交 %d 行失败：%s" % (len(items), last_error))
                 continue
-            raise SyncRequestError("HTTP %s：%s" % (status, snippet(text)))
+            raise SyncRequestError(detail)
 
         raise SyncRequestError("重试 %d 次后仍失败（%s）" % (self.retries, last_error))
 
@@ -596,30 +616,109 @@ def snippet(text, limit=300):
     return body[:limit] + ("..." if len(body) > limit else "")
 
 
-def parse_upsert_response(text, submitted):
-    """解析 Upsert 响应 {"affected": n, "mode": "skip|update"}
+def load_json_object(text):
+    """尽力把响应体解析成 dict；空体 / 非 JSON / 非对象一律返回 None"""
+    if not (text or "").strip():
+        return None
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) else None
 
-    update 模式下 affected 应当等于提交行数；若服务端明确回传更小的值，
-    说明有行没有落库，按失败处理（skip 模式的小值是预期行为）。
+
+def unwrap_response(data):
+    """拆开成功响应信封 {code, data, message}
+
+    :param data: 已 json 解析的响应体（任意类型）
+    :return: (业务数据 dict 或 None, code 或 None, message 或 None)
+             业务数据取信封的 data 节点；若服务端仍是旧版平铺结构
+             {"affected": n, "mode": "..."}（无信封），则顶层 dict 即业务数据
+    """
+    if not isinstance(data, dict):
+        return None, None, None
+
+    code = data.get("code")
+    if isinstance(code, bool) or not isinstance(code, int):
+        code = None
+    message = data.get("message")
+    if not isinstance(message, str):
+        message = None
+
+    payload = data.get("data")
+    if not isinstance(payload, dict):
+        # 兼容旧版平铺结构（无信封）：仅当顶层出现业务字段时才当作业务数据
+        payload = data if ("affected" in data or "mode" in data) else None
+    return payload, code, message
+
+
+def parse_error_response(status, text):
+    """解析失败响应信封，产出（一行可读描述, 是否可重试）
+
+    错误信封形如{"code": 211102, "message": "...", "detail": "...",
+    "request_id": "...", "error": {"code": ..., "retryable": false}}
+    （非 2xx 时不再套一层 data）。结构不符合预期时退化为
+    「HTTP <status>：<响应体片段>」，且不额外判定为可重试。
+
+    :param status: HTTP 状态码
+    :param text: 响应体
+    :return: (描述字符串, error.retryable 是否为 true)
+    """
+    data = load_json_object(text)
+    if data is None:
+        return "HTTP %s：%s" % (status, snippet(text)), False
+
+    parts = ["HTTP %s" % status]
+    code = data.get("code")
+    if isinstance(code, int) and not isinstance(code, bool):
+        parts.append("code=%d" % code)
+    # detail 与 message 内容常常重复，优先取 detail
+    reason = None
+    for key in ("detail", "message"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            reason = value.strip()
+            break
+    parts.append(reason if reason is not None else snippet(text))
+    request_id = data.get("request_id")
+    if isinstance(request_id, str) and request_id.strip():
+        parts.append("request_id=%s" % request_id.strip())
+
+    error = data.get("error")
+    retryable = isinstance(error, dict) and error.get("retryable") is True
+    if retryable:
+        parts.append("retryable=true")
+    return "，".join(parts), retryable
+
+
+def parse_upsert_response(text, submitted):
+    """解析 Upsert 成功响应信封
+
+    期望结构：{"code": 0, "data": {"affected": n, "mode": "skip|update"},
+              "message": "OK"}
+
+    - code 不在 SUCCESS_CODES 内时按业务失败处理（即使 HTTP 是 2xx）；
+    - 兼容旧版平铺结构 {"affected": n, "mode": "..."}；
+    - update 模式下 affected 应当等于提交行数；若服务端明确回传更小的值，
+      说明有行没有落库，按失败处理（skip 模式的小值是预期行为）。
 
     :param text: 响应体
     :param submitted: 本次提交的行数
     :return: dict {"affected": int|None, "mode": str|None, "requests": 1}
-    :raises SyncRequestError: 回传 affected 与 update 语义不符
+    :raises SyncRequestError: 业务错误码 / 回传 affected 与 update 语义不符
     """
-    data = None
-    if (text or "").strip():
-        try:
-            data = json.loads(text)
-        except ValueError:
-            data = None
-    if not isinstance(data, dict):
+    data = load_json_object(text)
+    payload, code, message = unwrap_response(data)
+    if code is not None and code not in SUCCESS_CODES:
+        raise SyncRequestError("服务端返回业务错误 code=%d：%s"
+                               % (code, message or snippet(text)))
+    if payload is None:
         return {"affected": None, "mode": None, "requests": 1}
 
-    affected = data.get("affected")
+    affected = payload.get("affected")
     if isinstance(affected, bool) or not isinstance(affected, int):
         affected = None
-    mode = data.get("mode")
+    mode = payload.get("mode")
     if not isinstance(mode, str):
         mode = None
 
