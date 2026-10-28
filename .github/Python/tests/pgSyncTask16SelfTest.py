@@ -7,8 +7,9 @@
 本自测把口径钉死：
     字段校验   —— 只下发接口定义过的 17 列；usc/ts 缺失或非法整行丢弃；
                   越界 date/time、负 volume/turnover、NaN 字段丢弃并上报；
-                  volume（bigint 列）必须下发整数，float 形式的 44.0 会被拒绝；
-    前收价     —— FTMM 的 LastClose 必须映射成接口字段 prev_close；
+                  未知字段（如旧名 prev_close）会被服务端 422 / 211005，客户端一律丢弃；
+                  volume 已改为 numeric(20,6)，小数成交量原样下发不截断；
+    前收价     —— FTMM 的 LastClose 必须映射成接口字段 last_close（需求 10794 改名）；
     批量语义   —— 413 自动二分且落库行数守恒；5xx/429 退避重试；4xx 立即失败不重试；
                   error.retryable=true 的 4xx 会重试；
                   成功信封 {code, data, message} 的 code 仅 0/1/200/202 算成功；
@@ -112,13 +113,17 @@ class FakeServer:
                     int(self.headers.get("Content-Length") or 0)).decode())
                 items = body["items"]
                 Handler.calls.append((self.path, items))
-                # 模拟线上列类型约束：volume 是 bigint（numeric_precision=64, scale=0），
-                # 服务端把 JSON 数字原文当参数文本，float 的 44.0 → "44.0" 被 PG 拒绝
-                # （22P02）→ 422 / 211303。客户端必须下发整数。
+                # 模拟线上严格字段校验（encoding/json DisallowUnknownFields）：
+                # 未知字段 → 422 / 211005（KLineUnknownField）。白名单与契约
+                # KLineItem 一致（需求 10794：last_close / pacd，旧名已废）。
+                allowed = {"usc", "ts", "date", "time", "open", "high", "low",
+                           "close", "last_close", "volume", "turnover",
+                           "change_price", "change_ratio", "pacd", "ext_field",
+                           "remark", "provider"}
                 for item in items:
-                    if isinstance(item.get("volume"), float):
+                    if sorted(set(item) - allowed):
                         self.reply(422, error_envelope(
-                            211303, "数据不满足业务约束", "rid-bigint"))
+                            211005, "请求包含未知字段", "rid-unknown"))
                         return
                 if Handler.retryable_4xx > 0:
                     Handler.retryable_4xx -= 1
@@ -171,16 +176,16 @@ def test_sanitize():
     row = {"ts": 1761000000000, "date": 20261020, "time": 93000, "open": 10.1,
            "high": 10.5, "low": 9.9, "close": 10.2, "volume": 1000,
            "turnover": 10200.5, "change_price": 0.2, "change_ratio": 2.0,
-           "prev_close": 10.0, "usc": "01810", "provider": "FTMM"}
+           "last_close": 10.0, "usc": "01810", "provider": "FTMM"}
     item, problems = PG.sanitize_item(row)
     check("正常行无问题", problems == [] and item["usc"] == "01810"
-          and item["prev_close"] == 10.0)
+          and item["last_close"] == 10.0)
     check("字段顺序固定",
           list(item) == [k for k in PG.ITEM_FIELDS if k in row], list(item))
 
-    item, problems = PG.sanitize_item({"ts": 1, "usc": "A", "last_close": 1.0,
+    item, problems = PG.sanitize_item({"ts": 1, "usc": "A", "prev_close": 1.0,
                                        "weird": 1})
-    check("未知字段被丢弃并记录",
+    check("未知字段（含已改名的 prev_close）被丢弃并记录",
           item == {"usc": "A", "ts": 1} and len(problems) == 2, (item, problems))
 
     check("缺 usc 整行丢弃", PG.sanitize_item({"ts": 1})[0] is None)
@@ -199,12 +204,12 @@ def test_sanitize():
           item == {"usc": "A", "ts": 1, "close": 10.35, "time": 93000}, item)
 
     item, problems = PG.sanitize_item({"usc": "A", "ts": 1, "volume": 44.0})
-    check("volume 下发整数（bigint 列不接受 44.0）",
-          item == {"usc": "A", "ts": 1, "volume": 44}
-          and isinstance(item["volume"], int) and problems == [], (item, problems))
+    check("volume 为整数形式也原样保留",
+          item == {"usc": "A", "ts": 1, "volume": 44.0} and problems == [],
+          (item, problems))
     item, problems = PG.sanitize_item({"usc": "A", "ts": 1, "volume": 44.5})
-    check("volume 非整数截断并上报",
-          item["volume"] == 44 and len(problems) == 1, (item, problems))
+    check("volume 小数不再截断（numeric(20,6)）",
+          item["volume"] == 44.5 and problems == [], (item, problems))
 
 
 def test_client(server):
@@ -298,11 +303,11 @@ def test_client(server):
 
     server.reset()
     try:
-        client.upsert([{"usc": "A", "ts": 9, "volume": 44.0}])
-        check("volume 浮点会被服务端拒绝（回归护栏）", False)
+        client.upsert([{"usc": "A", "ts": 9, "prev_close": 1.0}])
+        check("旧字段名 prev_close 会被判未知字段（回归护栏）", False)
     except PG.SyncRequestError as e:
-        check("volume 浮点会被服务端拒绝（回归护栏）",
-              "211303" in str(e), e)
+        check("旧字段名 prev_close 会被判未知字段（回归护栏）",
+              "211005" in str(e), e)
 
     try:
         PG.QuoteSyncClient(server.base, on_conflict="bad")
@@ -316,9 +321,9 @@ def test_sync_file(server, tmp):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     client = PG.QuoteSyncClient(server.base)
     column_types = PG.build_column_types()
-    check("前收价映射为 prev_close",
-          column_types["LastClose"][0] == "prev_close"
-          and column_types["前收价"][0] == "prev_close")
+    check("前收价映射为 last_close",
+          column_types["LastClose"][0] == "last_close"
+          and column_types["前收价"][0] == "last_close")
 
     with open(path, "w", encoding="utf-8") as f:
         f.write(mvsv_header(LONG_NAMES.split("|")))
@@ -337,10 +342,10 @@ def test_sync_file(server, tmp):
           all(it["usc"] == "01810" for c in server.calls for it in c[1]))
     check("provider 取自文件头",
           all(it["provider"] == "FTMM" for c in server.calls for it in c[1]))
-    check("前收价落到 prev_close",
-          all(it["prev_close"] == 10.0 for c in server.calls for it in c[1]))
-    check("volume 一律为整数（否则 bigint 列 22P02 / 211303）",
-          all(isinstance(it["volume"], int)
+    check("前收价落到 last_close",
+          all(it["last_close"] == 10.0 for c in server.calls for it in c[1]))
+    check("volume 按数值原样下发（支持小数）",
+          all(it["volume"] == 1000.0
               for c in server.calls for it in c[1]),
           [it["volume"] for c in server.calls for it in c[1]][:5])
 
@@ -385,7 +390,7 @@ def test_sync_file(server, tmp):
 
 def test_env_and_exit_code(server):
     check("URL 缺协议补 http",
-          PG.normalize_base_url("1.2.3.4:18001") == "http://1.2.3.4:18001")
+          PG.normalize_base_url("1.2.3.4:16001") == "http://1.2.3.4:16001")
     check("URL 去尾斜杠", PG.normalize_base_url("http://h:1/") == "http://h:1")
     for bad in ("   ", "ftp://h", "http://"):
         try:

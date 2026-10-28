@@ -17,11 +17,12 @@ cdeu.finv_quote_secu_kline_min，作为 Supabase 入库数据的镜像副本。
     - 请求体 {"items": [...]}，字段集合固定 17 列，接口侧 extra="forbid"，
       多传任何未定义字段都会 422；
     - 主键 (usc, ts)；onConflict=skip 只补缺 / onConflict=update 覆盖（默认）；
-    - 字段类型（对应表列）：`ts` / `volume` 为 **bigint**，`date` / `time` 为 integer，
-      `open/high/low/close/paocd/change_price/change_ratio` 为 numeric(20,6)，
-      `turnover` 为 numeric(30,8)。服务端保留 JSON 数字原文作为参数文本，
-      所以 **bigint 列必须下发整数**：`volume: 44.0` → 文本 "44.0" → PostgreSQL
-      `invalid input syntax for type bigint`（22P02）→ 接口 422 / 211303；
+    - 字段类型（对应表列）：`ts` 为 **bigint**，`date` / `time` 为 integer，
+      `open/high/low/close/last_close/pacd/change_price/change_ratio` 为
+      numeric(20,6)，`turnover` 为 numeric(30,8)。服务端保留 JSON 数字原文作为
+      参数文本，所以 **bigint 列必须下发整数**（`ts` 一律整数）；`volume` 自需求
+      10791（迁移 V200058）起已改为 numeric(20,6)，**小数成交量原样下发**，
+      不再截断为整数；
     - 成功响应统一信封 {code, data, message}，业务字段在 data 节点：
           {"code": 0, "data": {"affected": n, "mode": "skip|update"},
            "message": "OK"}
@@ -52,10 +53,12 @@ cdeu.finv_quote_secu_kline_min，作为 Supabase 入库数据的镜像副本。
 二、与 Supabase 入库的字段差异
 ----------------------------------------------------------------------------------------
     - 前收价：FTMM 的 LastClose 在 Supabase 表里探测 last_close / prev_close 落库，
-      本接口只有 prev_close，故固定映射为 prev_close；
+      本接口字段名固定为 last_close（需求 10794：原 prev_close 已改名），
+      故固定映射为 last_close；
     - Supabase 走 PostgREST 的字段级 merge-duplicates（缺列不写），本接口
       onConflict=update 是整行覆盖 —— 两者的载荷都来自同一份完整行，结果一致；
-    - 本接口不存在 paocd（当日累计均价），文件里也没有，故不下发；
+    - 当日累计均价对外字段名为 pacd（库列名仍是 paocd），FTMM 文件里没有该列，
+      故不下发；
     - 文件头缺列（空值）的行：Supabase 不写该列，本接口会写成 NULL（整行覆盖语义），
       属于接口既有行为，已在文档 §2.5 中说明。
 
@@ -63,9 +66,9 @@ cdeu.finv_quote_secu_kline_min，作为 Supabase 入库数据的镜像副本。
 ----------------------------------------------------------------------------------------
     - 必填：usc 非空且 ≤255、ts 为 ≥0 的整数；缺失/非法 → 整行丢弃并计为异常；
     - date ∈ [19500101, 21001231]、time ∈ [0, 235959]；
-    - volume / turnover ≥ 0；volume 目标列是 bigint，非整数值会按整数截断（并计为
-      字段级问题）；其余数值列必须有限（NaN / Infinity 会被丢弃，
-      否则 json 序列化会生成非法 JSON）；
+    - volume / turnover ≥ 0；数值列必须有限（NaN / Infinity 会被丢弃，
+      否则 json 序列化会生成非法 JSON）；volume 目标列已是 numeric(20,6)，
+      小数成交量原样保留；
     - provider ≤255；未定义的键一律丢弃（接口 extra="forbid"）。
     数据行解析采用「容错模式」（parse_mvsv_rows）：某一行数值非法只丢该行，
     不放弃整份文件，并逐行报出行号与原因。
@@ -77,7 +80,7 @@ cdeu.finv_quote_secu_kline_min，作为 Supabase 入库数据的镜像副本。
 
 四、环境变量（凭据与配置一律经环境注入，严禁写进源码或日志）
 ----------------------------------------------------------------------------------------
-    URL_QUOTE_SYNC_BASE   目标服务基础地址（含协议与端口，如 http://1.2.3.4:18001；
+    URL_QUOTE_SYNC_BASE   目标服务基础地址（含协议与端口，如 http://1.2.3.4:16001；
                           缺协议时按 http:// 补全）；缺失即致命退出
     PG_SYNC_BATCH_SIZE    单请求提交行数（默认 500，上限 5000，超出自动收敛）
     PG_SYNC_FILE_LIMIT    单次运行处理的文件数上限（默认 50，与 Supabase 任务取值对齐）
@@ -127,18 +130,18 @@ _HERE = os.path.dirname(os.path.abspath(__file__))       # <仓库根>/.github/P
 # 目标服务接口（见 .github/Python/ApiUpsertBatchDelete.md §2）
 API_UPSERT_PATH = "/OpenAPI/V1/Meta/Finv/Quote/Cdeu/Min/Upsert"
 
-# 接口允许的 items 字段（extra="forbid"，多传即 422），顺序固定以便复现请求体
+# 接口允许的 items 字段（extra="forbid"，多传即 422），顺序与契约文档
+# （FinvQuant Docs/OpenAPI/Quote/Cdeu/Min/Upsert.md 的 KLineItem）一致，
+# 便于对照契约与复现请求体。两个易踩坑的字段名：
+#   last_close —— 前收价（需求 10794：原 prev_close 已改名，旧名会被判未知字段）
+#   pacd       —— 当日累计均价（库列名仍是 paocd，对外字段名是 pacd）
 ITEM_FIELDS = (
-    "usc", "ts", "date", "time", "prev_close", "open", "high", "low", "close",
-    "paocd", "volume", "turnover", "ext_field", "remark", "change_price",
-    "change_ratio", "provider",
+    "usc", "ts", "date", "time", "open", "high", "low", "close", "last_close",
+    "volume", "turnover", "change_price", "change_ratio", "pacd", "ext_field",
+    "remark", "provider",
 )
 ITEM_FIELD_SET = frozenset(ITEM_FIELDS)
 INT_FIELDS = ("ts", "date", "time")
-# 目标列为 bigint 的数值字段：必须以整数下发。服务端把 JSON 数字原文当参数文本，
-# 所以 float 形式的 44.0 会变成文本 "44.0"，被 PostgreSQL 的 bigint 输入函数拒绝
-# （22P02 invalid input syntax for type bigint）→ 接口返回 422 / 211303。
-BIGINT_FIELDS = ("volume",)
 NON_NEGATIVE_FIELDS = ("volume", "turnover")
 TEXT_FIELDS = ("usc", "ext_field", "remark", "provider")
 TEXT_LIMITS = {"usc": 255, "provider": 255}   # 接口约束：usc / provider ≤ 255
@@ -148,7 +151,8 @@ DATE_MIN, DATE_MAX = 19500101, 21001231        # yyyyMMdd
 TIME_MIN, TIME_MAX = 0, 235959                 # HHmmss
 
 # 前收价在目标接口里的字段名（FTMM 文件里叫 LastClose / 前收价）
-LAST_CLOSE_TARGET_FIELD = "prev_close"
+# 需求 10794 起接口字段为 last_close（库列同步改名），旧名 prev_close 不再接受
+LAST_CLOSE_TARGET_FIELD = "last_close"
 
 # 默认配置（可被环境变量覆盖）
 DEFAULT_BATCH_SIZE = 100
@@ -190,7 +194,7 @@ COLUMN_TYPES = {
     "High": ("high", "float"),
     "Low": ("low", "float"),
     "Close": ("close", "float"),
-    "Volume": ("volume", "int"),
+    "Volume": ("volume", "float"),        # 接口 volume 为 numeric(20,6)，支持小数
     "Turnover": ("turnover", "float"),
     "ChangePrice": ("change_price", "float"),
     "ChangeRatio": ("change_ratio", "float"),
@@ -202,7 +206,7 @@ COLUMN_TYPES = {
     "最高价": ("high", "float"),
     "最低价": ("low", "float"),
     "收盘价": ("close", "float"),
-    "成交量": ("volume", "int"),
+    "成交量": ("volume", "float"),          # 同上：支持小数成交量
     "成交额": ("turnover", "float"),
     "涨跌值": ("change_price", "float"),
     "涨跌幅": ("change_ratio", "float"),
@@ -400,7 +404,7 @@ def _as_float(value):
 
 
 def build_column_types():
-    """解析前确定列映射：把 FTMM 的前收价映射到接口字段 prev_close
+    """解析前确定列映射：把 FTMM 的前收价映射到接口字段 last_close
 
     与 Supabase 链路不同，这里不需要探测目标表列（接口字段名由文档固定）。
 
@@ -466,7 +470,7 @@ def sanitize_item(row):
             item[key] = number
             continue
 
-        # 其余均为数值列（prev_close/open/high/low/close/paocd/volume/turnover/...）
+        # 其余均为数值列（last_close/open/high/low/close/pacd/volume/turnover/...）
         number = _as_float(value)
         if number is None:
             problems.append("%s=%r 不是有效数值，已丢弃" % (key, value))
@@ -474,12 +478,6 @@ def sanitize_item(row):
         if key in NON_NEGATIVE_FIELDS and number < 0:
             problems.append("%s=%s 为负，已丢弃" % (key, number))
             continue
-        if key in BIGINT_FIELDS:
-            integral = int(number)
-            if integral != number:
-                problems.append("%s=%s 非整数，已截断为 %d（目标列 bigint，小数文本会被拒绝）"
-                                % (key, number, integral))
-            number = integral
         item[key] = number
 
     # 必填项校验（接口 422 的直接来源）
@@ -512,7 +510,7 @@ def normalize_base_url(value):
     """规范化目标服务基础地址：补协议、去尾部斜杠、校验主机名
 
     :param value: URL_QUOTE_SYNC_BASE 原始取值
-    :return: 可拼接路径的基础地址（如 http://1.2.3.4:18001）
+    :return: 可拼接路径的基础地址（如 http://1.2.3.4:16001）
     :raises ValueError: 地址为空或无法解析
     """
     text = (value or "").strip()
@@ -1030,7 +1028,7 @@ def main():
     base_url = os.environ.get("URL_QUOTE_SYNC_BASE", "").strip()
     if not base_url:
         print("❌ 缺少 URL_QUOTE_SYNC_BASE 环境变量（目标服务基础地址，"
-              "如 http://1.2.3.4:18001），无法同步")
+              "如 http://1.2.3.4:16001），无法同步")
         return 1
     try:
         client = QuoteSyncClient(base_url, on_conflict=on_conflict,

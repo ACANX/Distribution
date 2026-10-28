@@ -26,7 +26,7 @@
 #   - 删除目标为本仓库(ACANX/Distribution)的 quote 分支, 依赖 Secret
 #     GIT_COMMIT_TOKEN(需本仓库 contents:write 权限);
 #   - 依赖 Secrets: SUPABASE_PROJECT_REF / SUPABASE_KEY(Supabase Dashboard > Settings > API);
-#   - 依赖 Secrets: URL_QUOTE_SYNC_BASE(自建行情服务基础地址, 如 http://<实例IP>:18001,
+#   - 依赖 Secrets: URL_QUOTE_SYNC_BASE(自建行情服务基础地址, 如 http://<实例IP>:16001,
 #     无鉴权, 服务端按来源 IP 白名单放行); 该 Secret 缺失时 Task16...PG 步骤直接失败;
 #   - 步骤顺序为 Task16DayMvsvFileDataSyncPG → Task16DayMvsvFileDataSyncSupabase:
 #     镜像写入未完整成功时中断, 避免源文件被 Supabase 步骤删除后镜像永久缺数

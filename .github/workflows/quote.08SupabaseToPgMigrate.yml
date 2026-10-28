@@ -1,7 +1,7 @@
 # Supabase 存量行情迁移到自建行情服务(PG): 分批搬库 + 同步成功即删除源表数据
 # 读取 Supabase 表 finv_quote_secu_kline_min 的存量行, 按「各证券最早数据的 ts」
 # 升序逐个证券迁移, 证券内按 ts 升序分批(每批默认 100 行, 单批只含一个证券),
-# 通过 POST {URL_QUOTE_SYNC_BASE}/API/V1/Meta/Finv/Quote/Secu/KLine/Min/Upsert
+# 通过 POST {URL_QUOTE_SYNC_BASE}/API/V1/Meta/Finv/Quote/Cdeu/Min/Upsert
 # 写入自建行情服务, 整批写入成功后再从 Supabase 删除这批已同步的行
 # (接口文档见 .github/Python/ApiUpsertBatchDelete.md)。
 # 脚本: .github/Python/Quote/Task17SupabaseToPgMigrate.py

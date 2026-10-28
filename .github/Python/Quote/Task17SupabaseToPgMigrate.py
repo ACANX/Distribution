@@ -8,7 +8,7 @@ Task17 —— Supabase 存量行情数据分批迁移到自建行情服务（Ups
 ----------------------------------------------------------------------------------------
 把 Supabase 表 public.finv_quote_secu_kline_min 里的存量行情分批迁出：每批通过
 自建行情服务的 Upsert 接口
-（POST {BASE}/API/V1/Meta/Finv/Quote/Secu/KLine/Min/Upsert?onConflict=update）
+（POST {BASE}/API/V1/Meta/Finv/Quote/Cdeu/Min/Upsert?onConflict=update）
 写入其 PostgreSQL 表 public.finv_quote_secu_kline_min，
 **整批写入成功后再从 Supabase 删除这批已同步的行**，直到存量清空、
 或达到批次上限（默认 50000 批）为止。
@@ -17,6 +17,9 @@ Task17 —— Supabase 存量行情数据分批迁移到自建行情服务（Ups
     - 请求体 {"items": [...]}，字段集合固定 17 列，接口侧 extra="forbid"，
       多传任何未定义字段都会 422；
     - 主键 (usc, ts)；onConflict=skip 只补缺 / onConflict=update 覆盖（默认）；
+    - 字段名跟着服务端契约走（需求 10794）：前收价是 `last_close`（旧名
+      `prev_close` 已废止），当日累计均价对外字段是 `pacd`（库列仍叫 `paocd`）；
+      多传任何未定义字段都会 422 / 211005；
     - 返回 {"affected": n, "mode": "..."}；单次上限 Limits.MaxBatchRows（默认 5000）；
     - 无鉴权，靠安全组/白名单限制来源 IP。
 
@@ -64,7 +67,7 @@ Task17 —— Supabase 存量行情数据分批迁移到自建行情服务（Ups
 ----------------------------------------------------------------------------------------
     SUPABASE_PROJECT_REF        源 Supabase 项目引用（Dashboard 地址中 .supabase.co 之前一段）
     SUPABASE_KEY                Supabase API 密钥（service-role；不落日志）
-    URL_QUOTE_SYNC_BASE         目标服务基础地址（含协议与端口，如 http://1.2.3.4:18001）
+    URL_QUOTE_SYNC_BASE         目标服务基础地址（含协议与端口，如 http://1.2.3.4:16001）
     MIGRATE_BATCH_SIZE          单批行数（默认 100，上限 5000，超出自动收敛；单批只含一个证券）
     MIGRATE_MAX_BATCHES         单次运行的批次上限（默认 50000，达到即停止，重跑可继续）
     MIGRATE_ON_CONFLICT         冲突策略 skip / update（默认 update）
@@ -118,18 +121,21 @@ import urllib.request
 # ---------------------------------------------------------------------------
 
 # 目标服务接口（见 .github/Python/ApiUpsertBatchDelete.md §1）
-API_BASE_PATH = "/API/V1/Meta/Finv/Quote/Secu/KLine/Min"
+# 需求 10782：分钟行情统一到 /Meta/Finv/Quote/Cdeu/Min 前缀，旧
+# /Meta/Finv/Quote/Secu/KLine/Min 已不再注册（会 404）。本脚本走内部路由
+# /API/V1（响应为平铺 {affected, mode}）；若服务端开启登录鉴权，需先放行或提供 token。
+API_BASE_PATH = "/API/V1/Meta/Finv/Quote/Cdeu/Min"
 API_UPSERT_PATH = API_BASE_PATH + "/Upsert"
 
 # Supabase / PostgREST 源表（与 Task16 入库表一致）
 TABLE = "finv_quote_secu_kline_min"
 REST_URL_TEMPLATE = "https://%s.supabase.co/rest/v1"
 
-# 目标接口允许的 items 字段（extra="forbid"，多传即 422），顺序固定以便复现请求体
+# 目标接口允许的 items 字段（extra="forbid"，多传即 422），顺序与契约文档一致
 ITEM_FIELDS = (
-    "usc", "ts", "date", "time", "prev_close", "open", "high", "low", "close",
-    "paocd", "volume", "turnover", "ext_field", "remark", "change_price",
-    "change_ratio", "provider",
+    "usc", "ts", "date", "time", "open", "high", "low", "close", "last_close",
+    "volume", "turnover", "change_price", "change_ratio", "pacd", "ext_field",
+    "remark", "provider",
 )
 INT_FIELDS = ("ts", "date", "time")
 NON_NEGATIVE_FIELDS = ("volume", "turnover")
@@ -140,9 +146,10 @@ TEXT_LIMITS = {"usc": 255, "provider": 255}    # 接口约束：usc / provider �
 DATE_MIN, DATE_MAX = 19500101, 21001231         # yyyyMMdd
 TIME_MIN, TIME_MAX = 0, 235959                  # HHmmss
 
-# 前收价：源表可能叫 prev_close 或 last_close，目标接口固定叫 prev_close
-LAST_CLOSE_SOURCE_COLUMNS = ("prev_close", "last_close")
-LAST_CLOSE_TARGET_FIELD = "prev_close"
+# 前收价：源表可能叫 prev_close 或 last_close，目标接口固定叫 last_close
+# （需求 10794 由 prev_close 改名；旧名下发会被判未知字段 211005）
+LAST_CLOSE_SOURCE_COLUMNS = ("last_close", "prev_close")
+LAST_CLOSE_TARGET_FIELD = "last_close"
 
 # 分页 / 删除所需的主键列（源表必须存在）
 KEY_COLUMNS = ("usc", "ts")
@@ -342,9 +349,11 @@ def build_item(record):
 
     for key in ITEM_FIELDS:
         if key == LAST_CLOSE_TARGET_FIELD:
-            value = record.get("prev_close")
-            if value is None:
-                value = record.get("last_close")
+            value = None
+            for name in LAST_CLOSE_SOURCE_COLUMNS:
+                if record.get(name) is not None:
+                    value = record[name]
+                    break
         else:
             value = record.get(key)
         if value is None:
@@ -381,7 +390,7 @@ def build_item(record):
             item[key] = number
             continue
 
-        # 其余均为数值列（prev_close/open/high/low/close/paocd/volume/turnover/...）
+        # 其余均为数值列（last_close/open/high/low/close/pacd/volume/turnover/...）
         number = _as_float(value)
         if number is None:
             problems.append("%s=%r 不是有效数值，已丢弃" % (key, value))
@@ -413,7 +422,7 @@ def resolve_columns(discovered):
         raise MigrationError("源表 %s 缺少必需列：%s（无法按键集分页与删除）"
                              % (TABLE, "、".join(missing)))
     columns = [name for name in ITEM_FIELDS if name in discovered]
-    if "prev_close" not in columns:
+    if LAST_CLOSE_TARGET_FIELD not in columns:
         for name in LAST_CLOSE_SOURCE_COLUMNS:
             if name in discovered:
                 columns.append(name)
@@ -666,7 +675,7 @@ def normalize_base_url(value):
     """规范化目标服务基础地址：补协议、去尾部斜杠、校验主机名
 
     :param value: URL_QUOTE_SYNC_BASE 原始取值
-    :return: 可拼接路径的基础地址（如 http://1.2.3.4:18001）
+    :return: 可拼接路径的基础地址（如 http://1.2.3.4:16001）
     :raises ValueError: 地址为空或无法解析
     """
     text = (value or "").strip()
@@ -1099,7 +1108,7 @@ def main():
     base_url = os.environ.get("URL_QUOTE_SYNC_BASE", "").strip()
     if not base_url:
         print("❌ 缺少 URL_QUOTE_SYNC_BASE 环境变量（目标服务基础地址，"
-              "如 http://1.2.3.4:18001），无法迁移")
+              "如 http://1.2.3.4:16001），无法迁移")
         return 1
 
     try:
@@ -1120,7 +1129,7 @@ def main():
         columns = resolve_columns(discovered)
         print("读取列 = %s" % ",".join(columns))
         if not any(name in columns for name in LAST_CLOSE_SOURCE_COLUMNS):
-            print("⚠️ 源表没有 prev_close / last_close 列，前收价不下发")
+            print("⚠️ 源表没有 last_close / prev_close 列，前收价不下发")
         result = migrate(target, reader, columns, batch_size, max_batches,
                          enable_delete, continue_on_error, allow_mismatch)
     except MigrationError as e:
