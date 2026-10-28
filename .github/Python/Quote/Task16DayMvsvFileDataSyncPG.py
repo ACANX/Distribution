@@ -45,8 +45,12 @@ cdeu.finv_quote_secu_kline_min，作为 Supabase 入库数据的镜像副本。
     - 两条链路的读取口径（目录、文件名排序、fileLimit 语义）必须保持一致，
       本脚本对数据行采用容错解析 parse_mvsv_rows（见 §三），
       修改任一侧的目录 / 列映射时请同步另一侧；
-    - 源文件删除：**默认开启**；单个文件全部批次成功后，本脚本调用 GitHub
-      Contents API 删除 quote 分支上的该源文件（需 GIT_COMMIT_TOKEN，缺失即退出 1）；
+    - 源文件删除：**默认开启**；单个文件全部批次成功后删除 quote 分支上的该源文件
+      （需 GIT_COMMIT_TOKEN，缺失即退出 1）。删除策略：
+          1) 优先 **Git Data API 批量删除**：PG_SYNC_DELETE_BATCH_SIZE 个文件压成 1 条
+             commit（5 次调用 / 批，对比逐文件的 2 次/文件 + 1 commit/文件）；
+          2) 批量失败的文件（该批报错 / 非快进重试耗尽 / 端点或权限不可用）
+             自动回退到**逐文件 Contents API 兜底**，已有源文件不会被漏删；
       PG_SYNC_ENABLE_DELETE=false/0 时降级为安全模式，只打印待删除清单；
     - 删除是安全的：文件解析异常 / 任一批次失败一律保留；partial 文件仅在
       PG_SYNC_ALLOW_PARTIAL 开启（即不视为失败）时才删；
@@ -96,6 +100,9 @@ cdeu.finv_quote_secu_kline_min，作为 Supabase 入库数据的镜像副本。
                           partial 文件也只有在此时才会被删除
     PG_SYNC_ENABLE_DELETE  删除开关，**默认开启**；设为 "false"/"0" 降级为安全模式
                           （不调删除接口，只打印「待删除」清单，队列不会前进）
+    PG_SYNC_DELETE_BULK    "false"/"0" 时不用批量，直接逐文件删除
+                          （默认 true：优先批量，失败再兜底）
+    PG_SYNC_DELETE_BATCH_SIZE 批量删除时每个 commit 的文件数（默认 500，上限 1000）
     GIT_COMMIT_TOKEN      删除用的 GitHub 令牌（需本仓库 contents:write）；
                           开启删除但缺失即按失败退出
     GIT_REPO_SLUG         可选，"owner/repo" 覆盖（默认从 .git/config 的 origin 解析）
@@ -185,11 +192,19 @@ SAMPLE_LIMIT = 5
 
 USER_AGENT = "Distribution-QuoteSync/1.0 (+https://github.com/ACANX/Distribution)"
 
-# 源文件删除（GitHub Contents API）：默认开启，PG_SYNC_ENABLE_DELETE=false 关闭
+# 源文件删除（GitHub API）：默认开启，PG_SYNC_ENABLE_DELETE=false 关闭
+# 优先 Git Data API 批量（一次 commit 删一批）；失败的文件回退 Contents API 逐文件
 GITHUB_API_BASE = "https://api.github.com/repos"
 GITHUB_TIMEOUT = 30
 DELETE_COMMIT_MESSAGE = "[Task16PG] delete synced %s"
 REMOTE_FILE_ABSENT = "absent"                  # github_file_sha 的“文件不存在”哨兵
+
+# 批量删除（Git Data API）：优先一次 commit 删一批，失败的文件回退逐文件 Contents API
+DEFAULT_DELETE_BATCH_SIZE = 500                # 每个 commit 删除多少个文件
+MAX_DELETE_BATCH_SIZE = 1000                   # POST /git/trees 条目数硬上限（保守值）
+DEFAULT_BULK_RETRIES = 3                       # 非快进（分支被推进）时的重试次数
+BULK_RETRY_BACKOFF_SECONDS = 2.0
+DEFAULT_DELETE_BULK = True                     # 是否优先用批量（PG_SYNC_DELETE_BULK）
 
 # 源目录与文件名规则（quote 分支内相对路径）
 SOURCE_DIR = "Archive/Finv/SecuQuote/FTMM/V5"
@@ -1010,6 +1025,222 @@ def log_path_list(title, paths, limit=20):
 
 
 # ---------------------------------------------------------------------------
+# 批量删除（Git Data API：一次 commit 删除一批文件）
+# ---------------------------------------------------------------------------
+#
+# 优先方案。逐文件 Contents API 删除是兜底方案（见 delete_remote_file）。
+# 一趟删除的调用数对比（500 文件）：
+#   批量：GET ref + GET commit + POST tree + POST commit + PATCH ref = 5 次 / 1 条 commit
+#   兜底：每文件 GET sha + DELETE = 1000 次 / 500 条 commit
+
+class BulkDeleteError(Exception):
+    """Git Data API 批量删除失败（该批路径回退逐文件删除）"""
+
+
+class NonFastForwardError(BulkDeleteError):
+    """PATCH ref 非快进冲突（可重试：重取 ref → 重建 tree → 重建 commit）"""
+
+
+def github_api_call(api_base, method, api_path, token, body, timeout):
+    """调用 GitHub API（api_path 形如 /owner/repo/git/ref/heads/quote）
+
+    :return: (status, text)；网络层失败抛 BulkDeleteError
+    """
+    url = "%s%s" % (api_base.rstrip("/"), api_path)
+    body_bytes = None
+    if body is not None:
+        body_bytes = json.dumps(body, ensure_ascii=False).encode("utf-8")
+    status, text, error = github_request(method, url, token, body_bytes, timeout)
+    if error:
+        raise BulkDeleteError("%s %s %s" % (method, api_path, error))
+    return status, text
+
+
+def _github_json(api_base, method, api_path, token, timeout, body=None,
+                 expect=(200, 201)):
+    """调用并解 JSON 对象；状态码不在 expect 内则抛 BulkDeleteError"""
+    status, text = github_api_call(api_base, method, api_path, token, body,
+                                   timeout)
+    if status not in expect:
+        raise BulkDeleteError("%s %s 失败：HTTP %s：%s"
+                              % (method, api_path, status, snippet(text)))
+    try:
+        payload = json.loads(text)
+    except ValueError:
+        raise BulkDeleteError("%s %s 响应不是合法 JSON" % (method, api_path))
+    if not isinstance(payload, dict):
+        raise BulkDeleteError("%s %s 响应不是 JSON 对象" % (method, api_path))
+    return payload
+
+
+def github_repo_path(owner, repo, suffix):
+    """拼 /{owner}/{repo}{suffix}（owner/repo 转义，suffix 由调用方拼好）"""
+    return "/%s/%s%s" % (urllib.parse.quote(owner, safe=""),
+                         urllib.parse.quote(repo, safe=""), suffix)
+
+
+def github_branch_head(api_base, owner, repo, branch, token, timeout):
+    """取分支当前 commit sha（作为新 commit 的 parent）"""
+    api_path = github_repo_path(owner, repo, "/git/ref/heads/%s"
+                                % urllib.parse.quote(branch, safe="/"))
+    payload = _github_json(api_base, "GET", api_path, token, timeout)
+    sha = (payload.get("object") or {}).get("sha")
+    if not sha:
+        raise BulkDeleteError("GET ref 响应缺少 object.sha")
+    return sha
+
+
+def github_commit_tree(api_base, owner, repo, commit_sha, token, timeout):
+    """取 commit 对应的 tree sha（作为 base_tree）"""
+    api_path = github_repo_path(owner, repo, "/git/commits/%s" % commit_sha)
+    payload = _github_json(api_base, "GET", api_path, token, timeout)
+    sha = (payload.get("tree") or {}).get("sha")
+    if not sha:
+        raise BulkDeleteError("GET commit 响应缺少 tree.sha")
+    return sha
+
+
+def github_tree_paths(api_base, owner, repo, tree_sha, token, timeout):
+    """列出 tree 下所有 blob 路径（recursive=1）
+
+    tree 响应被截断时抛错（路径集合不完整，无法可靠判断文件是否存在）。
+    """
+    api_path = github_repo_path(owner, repo,
+                                "/git/trees/%s?recursive=1" % tree_sha)
+    payload = _github_json(api_base, "GET", api_path, token, timeout)
+    if payload.get("truncated"):
+        raise BulkDeleteError("tree %s 响应被截断（truncated=true）" % tree_sha)
+    return {entry.get("path") for entry in payload.get("tree") or []
+            if entry.get("type") == "blob"}
+
+
+def github_create_deletion_tree(api_base, owner, repo, base_tree, paths,
+                                token, timeout):
+    """在 tree 里把 paths 全部标记为删除（sha=null），返回新 tree sha"""
+    api_path = github_repo_path(owner, repo, "/git/trees")
+    body = {"base_tree": base_tree,
+            "tree": [{"path": path, "mode": "100644", "type": "blob",
+                       "sha": None} for path in paths]}
+    payload = _github_json(api_base, "POST", api_path, token, timeout, body)
+    sha = payload.get("sha")
+    if not sha:
+        raise BulkDeleteError("POST trees 响应缺少 sha")
+    return sha
+
+
+def github_create_commit(api_base, owner, repo, tree_sha, parent_sha, message,
+                         token, timeout):
+    """基于新 tree 与 parent 建 commit，返回 commit sha"""
+    api_path = github_repo_path(owner, repo, "/git/commits")
+    payload = _github_json(api_base, "POST", api_path, token, timeout,
+                           {"message": message, "tree": tree_sha,
+                            "parents": [parent_sha]})
+    sha = payload.get("sha")
+    if not sha:
+        raise BulkDeleteError("POST commits 响应缺少 sha")
+    return sha
+
+
+def github_update_branch(api_base, owner, repo, branch, commit_sha, token, timeout):
+    """把分支 ref 快进到新 commit；非快进（422）抛 NonFastForwardError"""
+    api_path = github_repo_path(owner, repo, "/git/refs/heads/%s"
+                                % urllib.parse.quote(branch, safe="/"))
+    status, text = github_api_call(api_base, "PATCH", api_path, token,
+                                   {"sha": commit_sha, "force": False}, timeout)
+    if 200 <= status < 300:
+        return
+    if status == 422:
+        raise NonFastForwardError("PATCH ref 被拒（分支已前进）：HTTP 422：%s"
+                                  % snippet(text))
+    raise BulkDeleteError("PATCH ref 失败：HTTP %s：%s" % (status, snippet(text)))
+
+
+def delete_files_in_one_commit(api_base, owner, repo, branch, paths, token,
+                               batch_size=DEFAULT_DELETE_BATCH_SIZE,
+                               retries=DEFAULT_BULK_RETRIES,
+                               timeout=GITHUB_TIMEOUT,
+                               verify=True,
+                               message=None):
+    """优先方案：用 Git Data API 把一批文件压成一次 commit 删除
+
+    每批独立处理：某批失败只把该批路径放进 fallback（交给调用方逐文件兜底），
+    不中断后续批次；若判定「批量方案不可用」（权限 / 端点不支持 / tree 截断），
+    后续批次直接进 fallback，避免每批都白试一次。
+
+    :param verify: True 时先拉 recursive tree，跳过不存在的路径（不产生空 commit）
+    :return: dict {"deleted": [...], "missing": [...], "commits": [...],
+                   "fallback": [...], "fatal": str|None}
+    """
+    targets = list(dict.fromkeys(paths))       # 去重保序
+    result = {"deleted": [], "missing": [], "commits": [],
+              "fallback": [], "fatal": None}
+    if not targets:
+        return result
+
+    total_batches = (len(targets) + batch_size - 1) // batch_size
+    for index, chunk in enumerate(chunks(targets, batch_size), 1):
+        if result["fatal"]:
+            result["fallback"].extend(chunk)
+            continue
+        print("批量删除 第 %d/%d 批：%d 个文件"
+              % (index, total_batches, len(chunk)))
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                head = github_branch_head(api_base, owner, repo, branch, token,
+                                          timeout)
+                tree_sha = github_commit_tree(api_base, owner, repo, head, token,
+                                              timeout)
+                batch_paths = chunk
+                missing = []
+                if verify:
+                    existing = github_tree_paths(api_base, owner, repo, tree_sha,
+                                                 token, timeout)
+                    batch_paths = [p for p in chunk if p in existing]
+                    missing = [p for p in chunk if p not in existing]
+                if not batch_paths:
+                    print("⚠️ 本批 %d 个文件在 %s@%s 上都不存在，跳过（不产生空 commit）"
+                          % (len(chunk), repo, branch))
+                    result["missing"].extend(missing)
+                    break
+
+                new_tree = github_create_deletion_tree(
+                    api_base, owner, repo, tree_sha, batch_paths, token, timeout)
+                new_commit = github_create_commit(
+                    api_base, owner, repo, new_tree, head,
+                    message or "[Task16PG] delete %d synced files"
+                    % len(batch_paths), token, timeout)
+                try:
+                    github_update_branch(api_base, owner, repo, branch,
+                                         new_commit, token, timeout)
+                except NonFastForwardError as error:
+                    if attempt > retries:
+                        raise BulkDeleteError("非快进冲突重试 %d 次仍失败：%s"
+                                              % (retries, error))
+                    wait = BULK_RETRY_BACKOFF_SECONDS * attempt
+                    print("⚠️ %s；重取 ref 后重试（第 %d/%d 次，等待 %.1fs）"
+                          % (error, attempt, retries, wait))
+                    time_module.sleep(wait)
+                    continue
+            except BulkDeleteError as error:
+                print("❌ 批量删除第 %d/%d 批失败：%s" % (index, total_batches, error))
+                print("   该批 %d 个文件回退逐文件删除" % len(chunk))
+                result["fallback"].extend(chunk)
+                if not result["fatal"]:
+                    result["fatal"] = "%s" % error
+                break
+
+            print("🗑️ 批量删除成功：commit=%s，删除 %d 个文件（尝试 %d 次）"
+                  % (new_commit[:8], len(batch_paths), attempt))
+            result["deleted"].extend(batch_paths)
+            result["missing"].extend(missing)
+            result["commits"].append(new_commit)
+            break
+    return result
+
+
+# ---------------------------------------------------------------------------
 # 单文件同步
 # ---------------------------------------------------------------------------
 
@@ -1203,6 +1434,10 @@ def main():
     on_conflict = resolve_on_conflict()
     allow_partial = env_bool("PG_SYNC_ALLOW_PARTIAL", False)
     enable_delete = env_bool("PG_SYNC_ENABLE_DELETE", True)
+    delete_bulk = env_bool("PG_SYNC_DELETE_BULK", DEFAULT_DELETE_BULK)
+    delete_batch_size = min(env_int("PG_SYNC_DELETE_BATCH_SIZE",
+                                    DEFAULT_DELETE_BATCH_SIZE),
+                            MAX_DELETE_BATCH_SIZE)
 
     print("======== 自建行情服务同步开始（Task16 / FTMM V5 / PG）========")
     print("分支 (branch) = %s" % branch)
@@ -1213,6 +1448,11 @@ def main():
     print("删除开关 (enableDelete) = %s"
           % ("开（同步成功后删除源文件）" if enable_delete
              else "关（安全模式：只列待删除清单）"))
+    if enable_delete:
+        print("删除策略 = %s"
+              % (("优先批量（每批 %d 个 / 1 条 commit），失败的文件回退逐文件"
+                  % delete_batch_size) if delete_bulk
+                 else "逐文件（Contents API，每条 1 个 commit）"))
 
     base_url = os.environ.get("URL_QUOTE_SYNC_BASE", "").strip()
     if not base_url:
@@ -1282,6 +1522,7 @@ def main():
         candidates.extend(partial_paths)
 
     deleted, already_gone, delete_failed = [], [], []
+    bulk_deleted, bulk_commits = [], []
     if candidates and not enable_delete:
         print("🔒 删除开关关闭（PG_SYNC_ENABLE_DELETE）：%d 个文件保留不删"
               % len(candidates))
@@ -1297,7 +1538,30 @@ def main():
         else:
             print("-------- 删除源文件（%d 个，%s/%s@%s）--------"
                   % (len(candidates), owner, repo, branch))
-            for rel_path in candidates:
+            pending = list(candidates)
+
+            # 优先：Git Data API 一次 commit 删一批（每批 1 条 commit）
+            if delete_bulk:
+                print("—— 批量删除（Git Data API，每批 %d 个）——"
+                      % delete_batch_size)
+                bulk = delete_files_in_one_commit(
+                    api_base, owner, repo, branch, pending, token,
+                    batch_size=delete_batch_size,
+                    retries=DEFAULT_BULK_RETRIES, timeout=GITHUB_TIMEOUT)
+                bulk_deleted = bulk["deleted"]
+                bulk_commits = bulk["commits"]
+                already_gone.extend(bulk["missing"])
+                pending = bulk["fallback"]
+                if bulk["fatal"]:
+                    print("⚠️ 批量删除不可用（%s），改用逐文件删除" % bulk["fatal"])
+                if bulk_deleted:
+                    print("批量删除合计：%d 个文件，%d 条 commit"
+                          % (len(bulk_deleted), len(bulk_commits)))
+
+            # 兜底：失败的（或未启用批量时的全部）逐文件 Contents API 删除
+            if pending:
+                print("—— 兜底：逐文件删除（%d 个）——" % len(pending))
+            for rel_path in pending:
                 result = delete_remote_file(api_base, owner, repo, branch,
                                             rel_path, token)
                 if not result["success"]:
@@ -1307,9 +1571,18 @@ def main():
                 else:
                     deleted.append(rel_path)
 
-    if enable_delete and (deleted or already_gone or delete_failed):
-        print("删除合计：已删除 %d 份，远端已不存在 %d 份，删除失败 %d 份"
-              % (len(deleted), len(already_gone), len(delete_failed)))
+    if enable_delete:
+        print("删除合计：批量删除 %d 份（%d 条 commit），兜底逐文件删除 %d 份，"
+              "远端已不存在 %d 份，删除失败 %d 份"
+              % (len(bulk_deleted), len(bulk_commits), len(deleted),
+                 len(already_gone), len(delete_failed)))
+        # 除逐条日志外再给一份可核对的清单（超长时只给前 20 条 + 总数）
+        log_path_list("删除成功清单（批量）", bulk_deleted)
+        log_path_list("删除成功清单（兜底逐文件）", deleted)
+        log_path_list("远端已不存在清单（无需再删）", already_gone)
+    else:
+        print("删除合计：删除开关关闭（安全模式），本次删除 0 份，保留待删 %d 份"
+              % len(candidates))
 
     if partial_files:
         print("部分同步清单（有行/字段被丢弃，数据不完整）：")

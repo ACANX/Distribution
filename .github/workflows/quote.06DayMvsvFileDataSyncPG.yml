@@ -1,9 +1,10 @@
 # 行情文件增量入库自建行情服务 PG + 验证后删除源文件:
 # 读取 quote 分支 Archive/Finv/SecuQuote/FTMM/V5/ 下的 .mvsv 行情文件, 解析后按
 # 批次(默认 100 行/批)以 HTTP Upsert 写入自建行情服务; 单个文件全部批次成功后,
-# 默认(删除开关 PG_SYNC_ENABLE_DELETE=true)通过 GitHub Contents API 删除 quote
-# 分支上对应的源文件; 任一批次失败则保留源文件(单批失败不阻塞后续批与后续文件,
-# Upsert 幂等可重跑)。开关设 false / 带提交 enableDelete=false 时降级为只列清单。
+# 默认(删除开关 PG_SYNC_ENABLE_DELETE=true)删除 quote 分支上对应的源文件:
+#   优先 Git Data API 批量删除(每 500 个文件压成 1 条 commit), 批量失败的文件
+#   自动回退逐文件 Contents API 兜底; 任一批次失败则保留源文件(Upsert 幂等可重跑)。
+#   开关设 false / 带提交 enableDelete=false 时降级为只列清单。
 #   - Task06DayMvsvFileDataSyncSupabase: Day/ (SecuQuote 11 列格式)
 #   - Task16DayMvsvFileDataSyncPG: FTMM/V5/ 的同一批数据先增量镜像到自建行情服务
 #     (POST {URL_QUOTE_SYNC_BASE}/OpenAPI/V1/Meta/Finv/Quote/Cdeu/Min/Upsert,
@@ -11,9 +12,9 @@
 #      成功), 失败为非 2xx 错误信封 {code, message, detail, request_id, error};
 #      请求体字段见 .github/Python/ApiUpsertBatchDelete.md, 响应契约见 FinvQuant
 #      仓库 Docs/OpenAPI/Quote/Cdeu/Min/Upsert.md); 写成功后默认删除源文件:
-#      单个文件全部批次成功才调 GitHub Contents API 删除 quote 分支上该文件
-#      (删除失败只影响退出码, 可重跑); partial 文件仅在 PG_SYNC_ALLOW_PARTIAL
-#      开启时才会被删; 关闭开关: PG_SYNC_ENABLE_DELETE=false
+#      优先 Git Data API 批量(每批 PG_SYNC_DELETE_BATCH_SIZE 个 / 1 条 commit),
+#      批量失败的文件回退逐文件 Contents API; partial 文件仅在
+#      PG_SYNC_ALLOW_PARTIAL 开启时才会被删; 关闭开关: PG_SYNC_ENABLE_DELETE=false
 #   - Task16DayMvsvFileDataSyncSupabase: FTMM/V5/ (FTMM 12 列格式, 按文件名日期升序)
 # 触发方式:
 #   - 定时触发: 每 5 小时自动运行一次(UTC 0/5/10/15/20 点的第 17 分, 即北京时间
@@ -112,6 +113,9 @@ jobs:
           PG_SYNC_ON_CONFLICT: update
           PG_SYNC_TIMEOUT: "60"
           PG_SYNC_RETRIES: "2"
+          # 删除策略: 优先 Git Data API 批量(每批 1 条 commit), 失败的文件回退逐文件
+          PG_SYNC_DELETE_BULK: "true"
+          PG_SYNC_DELETE_BATCH_SIZE: "500"
           # 未配置仓库变量 = 严格模式: 有行/字段被丢弃(partial)也按失败返回
           PG_SYNC_ALLOW_PARTIAL: ${{ vars.PG_SYNC_ALLOW_PARTIAL }}
           # 删除开关(默认开): 手动触发取 inputs.enableDelete(boolean 先 format 成

@@ -393,13 +393,26 @@ def test_sync_file(server, tmp):
 
 
 class FakeGitHub:
-    """假 GitHub Contents API：GET 取 sha，DELETE 删除并记录调用"""
+    """假 GitHub：同时支持 Contents API（兜底）与 Git Data API（批量）
+
+    模拟真实时序：POST /git/trees 不改变分支内容，只有 PATCH ref 成功才落地，
+    否则非快进重试用例会误判为「文件已删」。
+    """
 
     def __init__(self):
         class Handler(BaseHTTPRequestHandler):
-            exists = set()
-            calls = []
-            delete_status = 200
+            exists = set()             # 分支上的文件路径
+            calls = []                 # [(method, path, body)]
+            delete_status = 200        # Contents DELETE 的返回码
+            bulk_status = 200          # Git Data 写入（trees/commits/PATCH）的返回码
+            conflict_times = 0         # PATCH 返回 422（模拟分支被推进）的次数
+            pending = {}               # tree sha -> 待 PATCH 成功后才生效的删除路径
+            tree_seq = 0
+            commit_seq = 0
+            head_commit = "commit-0"
+            head_tree = "tree-0"
+            commits = []               # [{sha, tree, message}]
+            commit_trees = {"commit-0": "tree-0"}
 
             def log_message(self, *args):
                 pass
@@ -412,14 +425,46 @@ class FakeGitHub:
                 self.end_headers()
                 self.wfile.write(body)
 
+            def _path(self):
+                return urllib.parse.urlsplit(self.path).path
+
+            def _body(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                if not length:
+                    return {}
+                return json.loads(self.rfile.read(length).decode())
+
             def _file_path(self):
-                path = urllib.parse.urlsplit(self.path).path
+                path = self._path()
                 marker = "/contents/"
                 if marker not in path:
                     return None
                 return urllib.parse.unquote(path.split(marker, 1)[1])
 
             def do_GET(self):
+                path = self._path()
+                if "/git/ref/heads/" in path:
+                    Handler.calls.append(("GET", path, None))
+                    self.reply(200, {"object": {"sha": Handler.head_commit}})
+                    return
+                if "/git/commits/" in path:
+                    Handler.calls.append(("GET", path, None))
+                    sha = path.rsplit("/", 1)[1]
+                    tree = Handler.commit_trees.get(sha)
+                    if tree is None:
+                        self.reply(404, {"message": "Not Found"})
+                        return
+                    self.reply(200, {"sha": sha, "tree": {"sha": tree}})
+                    return
+                if "/git/trees/" in path:
+                    Handler.calls.append(("GET", path, None))
+                    tree = [{"path": name, "type": "blob", "mode": "100644",
+                             "sha": "sha-%s" % name}
+                            for name in sorted(Handler.exists)]
+                    self.reply(200, {"sha": Handler.head_tree, "tree": tree,
+                                     "truncated": False})
+                    return
+                # Contents API（兜底路径）
                 path_key = self._file_path()
                 Handler.calls.append(("GET", path_key, None))
                 if path_key not in Handler.exists:
@@ -427,9 +472,55 @@ class FakeGitHub:
                     return
                 self.reply(200, {"sha": "sha-%s" % path_key, "path": path_key})
 
+            def do_POST(self):
+                path = self._path()
+                body = self._body()
+                Handler.calls.append(("POST", path, body))
+                if Handler.bulk_status != 200:
+                    self.reply(Handler.bulk_status,
+                               {"message": "Resource not accessible by integration"})
+                    return
+                if path.endswith("/git/trees"):
+                    Handler.tree_seq += 1
+                    new_tree = "tree-%d" % Handler.tree_seq
+                    Handler.pending[new_tree] = [
+                        entry.get("path") for entry in body.get("tree") or []
+                        if entry.get("sha") is None]
+                    self.reply(201, {"sha": new_tree})
+                    return
+                if path.endswith("/git/commits"):
+                    Handler.commit_seq += 1
+                    sha = "commit-%d" % Handler.commit_seq
+                    Handler.commit_trees[sha] = body.get("tree")
+                    Handler.commits.append({"sha": sha,
+                                            "tree": body.get("tree"),
+                                            "message": body.get("message")})
+                    self.reply(201, {"sha": sha})
+                    return
+                self.reply(404, {"message": "Not Found"})
+
+            def do_PATCH(self):
+                path = self._path()
+                body = self._body()
+                Handler.calls.append(("PATCH", path, body))
+                if Handler.conflict_times > 0:
+                    Handler.conflict_times -= 1
+                    self.reply(422, {"message": "Update is not a fast forward"})
+                    return
+                if Handler.bulk_status != 200:
+                    self.reply(Handler.bulk_status, {"message": "boom"})
+                    return
+                for commit in Handler.commits:
+                    if commit["sha"] == body.get("sha"):
+                        for path_key in Handler.pending.pop(commit["tree"], []):
+                            Handler.exists.discard(path_key)
+                        Handler.head_commit = commit["sha"]
+                        Handler.head_tree = commit["tree"]
+                        break
+                self.reply(200, {"object": {"sha": body.get("sha")}})
+
             def do_DELETE(self):
-                length = int(self.headers.get("Content-Length") or 0)
-                body = json.loads(self.rfile.read(length).decode()) if length else {}
+                body = self._body()
                 path_key = self._file_path()
                 Handler.calls.append(("DELETE", path_key, body))
                 if Handler.delete_status != 200:
@@ -443,10 +534,26 @@ class FakeGitHub:
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
         self.base = "http://127.0.0.1:%d/repos" % self.httpd.server_port
 
-    def reset(self, exists=(), delete_status=200):
-        self.handler.exists = set(exists)
-        self.handler.delete_status = delete_status
-        self.handler.calls.clear()
+    def reset(self, exists=(), delete_status=200, bulk_status=200,
+              conflict_times=0):
+        handler = self.handler
+        handler.exists = set(exists)
+        handler.calls.clear()
+        handler.delete_status = delete_status
+        handler.bulk_status = bulk_status
+        handler.conflict_times = conflict_times
+        handler.pending = {}
+        handler.tree_seq = 0
+        handler.commit_seq = 0
+        handler.head_commit = "commit-0"
+        handler.head_tree = "tree-0"
+        handler.commits = []
+        handler.commit_trees = {"commit-0": "tree-0"}
+
+    def calls_of(self, method, marker=""):
+        """筛出某类调用（便于断言「用了批量」或「用了兜底」）"""
+        return [call for call in self.handler.calls
+                if call[0] == method and marker in (call[1] or "")]
 
     def stop(self):
         self.httpd.shutdown()
@@ -519,8 +626,9 @@ def test_delete_remote_file(gh):
 
 
 def test_main_delete(server, gh):
-    """main() 整链路：删除开关 / 删除范围（ok 才删、failed 不删、partial 需放行）"""
+    """main() 整链路：删除开关 / 批量优先 + 逐文件兜底 / 删除范围"""
     PG.RETRY_BACKOFF_SECONDS = 0.01
+    PG.BULK_RETRY_BACKOFF_SECONDS = 0.0
     ok_path = "Archive/Finv/SecuQuote/FTMM/V5/A/G/A_G_Min_FTMM_Day_20261020.mvsv"
     bad_path = "Archive/Finv/SecuQuote/FTMM/V5/A/B/A_B_Min_FTMM_Day_20261020.mvsv"
     part_path = "Archive/Finv/SecuQuote/FTMM/V5/A/P/A_P_Min_FTMM_Day_20261020.mvsv"
@@ -531,7 +639,8 @@ def test_main_delete(server, gh):
     os.environ["GIT_REPO_SLUG"] = "ACANX/Distribution"
     os.environ["CURR_BRANCH"] = "quote"
 
-    def run(status_map, enable_delete=True, allow_partial=False, token="token"):
+    def run(status_map, enable_delete=True, allow_partial=False, token="token",
+            bulk=True, bulk_status=200, delete_status=200, conflict_times=0):
         def fake_sync(client, root, rel_path, batch_size, column_types):
             return {"rel_path": rel_path, "status": status_map[rel_path],
                     "failure_digest": "d"}
@@ -543,6 +652,8 @@ def test_main_delete(server, gh):
             os.environ.pop("PG_SYNC_ENABLE_DELETE", None)      # 走脚本默认值
         else:
             os.environ["PG_SYNC_ENABLE_DELETE"] = "true" if enable_delete else "false"
+        os.environ["PG_SYNC_DELETE_BULK"] = "true" if bulk else "false"
+        os.environ.pop("PG_SYNC_DELETE_BATCH_SIZE", None)
         if allow_partial:
             os.environ["PG_SYNC_ALLOW_PARTIAL"] = "true"
         else:
@@ -551,7 +662,8 @@ def test_main_delete(server, gh):
             os.environ.pop("GIT_COMMIT_TOKEN", None)
         else:
             os.environ["GIT_COMMIT_TOKEN"] = token
-        gh.reset(exists=status_map)
+        gh.reset(exists=status_map, delete_status=delete_status,
+                 bulk_status=bulk_status, conflict_times=conflict_times)
         buf = io.StringIO()
         with redirect_stdout(buf):
             code = PG.main()
@@ -564,12 +676,20 @@ def test_main_delete(server, gh):
               (code, left))
 
         code, out, left = run({ok_path: "ok"})
-        delete_bodies = [call[2] for call in gh.handler.calls if call[0] == "DELETE"]
-        check("开关开启：完整同步的文件被删除",
-              code == 0 and left == set() and "已删除源文件" in out, (code, left))
-        check("删除打到 CURR_BRANCH 指定的分支",
-              [body.get("branch") for body in delete_bodies] == ["quote"],
-              delete_bodies)
+        check("默认优先批量删除（Git Data API），不调 Contents DELETE",
+              code == 0 and left == set() and "批量删除成功" in out
+              and gh.calls_of("DELETE") == [],
+              (code, left, gh.calls_of("DELETE")))
+        check("批量删除打到 CURR_BRANCH 指定的分支",
+              [call[1] for call in gh.calls_of("PATCH")]
+              == ["/repos/ACANX/Distribution/git/refs/heads/quote"],
+              gh.calls_of("PATCH"))
+        check("批量只产生 1 条 commit",
+              len(gh.handler.commits) == 1, gh.handler.commits)
+        check("删除后打印可核对的结果清单",
+              "删除合计：批量删除 1 份（1 条 commit）" in out
+              and "删除成功清单（批量）（1 个）" in out and ok_path in out,
+              out[-500:])
 
         code, out, left = run({ok_path: "ok"}, enable_delete=None)
         check("未设置开关时默认删除（默认值开启）",
@@ -579,6 +699,25 @@ def test_main_delete(server, gh):
         code, out, left = run({ok_path: "ok"}, enable_delete=False)
         check("显式 false 时只列清单不删",
               code == 0 and left == {ok_path}, (code, left))
+
+        code, out, left = run({ok_path: "ok"}, bulk_status=403)
+        check("批量不可用时回退逐文件删除（Contents API）",
+              code == 0 and left == set() and "批量删除不可用" in out
+              and "兜底：逐文件删除" in out
+              and len(gh.calls_of("DELETE")) == 1,
+              (code, left, out[-500:]))
+        check("兜底删除有逐条日志", "已删除源文件" in out, out[-300:])
+
+        code, out, left = run({ok_path: "ok"}, bulk=False)
+        check("PG_SYNC_DELETE_BULK=false 时直接逐文件",
+              code == 0 and left == set()
+              and gh.calls_of("POST", "/git/trees") == []
+              and len(gh.calls_of("DELETE")) == 1, (code, left))
+
+        code, out, left = run({ok_path: "ok"}, conflict_times=1)
+        check("批量删除非快进冲突后重试成功",
+              code == 0 and left == set() and "重取 ref 后重试" in out,
+              (code, left))
 
         code, out, left = run({ok_path: "ok", bad_path: "failed"})
         check("失败文件保留、其余删除且退出 1",
@@ -597,22 +736,15 @@ def test_main_delete(server, gh):
               code == 1 and left == {ok_path} and "GIT_COMMIT_TOKEN" in out,
               (code, left))
 
-        gh.reset(exists={ok_path}, delete_status=500)
-        PG.collect_mvsv_files = lambda root: [(ok_path, 20261020, "x")]
-        PG.sync_file = lambda *a, **k: {"rel_path": ok_path, "status": "ok",
-                                        "failure_digest": "d"}
-        os.environ["PG_SYNC_ENABLE_DELETE"] = "true"
-        os.environ["GIT_COMMIT_TOKEN"] = "token"
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            code = PG.main()
-        check("删除失败：退出 1 且文件保留",
+        code, out, left = run({ok_path: "ok"}, bulk_status=403, delete_status=500)
+        check("批量与兜底都失败：退出 1 且文件保留",
               code == 1 and ok_path in gh.handler.exists
-              and "删除失败清单" in buf.getvalue(), code)
+              and "删除失败清单" in out, (code, out[-400:]))
     finally:
         PG.collect_mvsv_files, PG.sync_file = orig_collect, orig_sync
         for name in ("GIT_API_BASE", "GIT_REPO_SLUG", "GIT_COMMIT_TOKEN",
-                     "PG_SYNC_ENABLE_DELETE", "PG_SYNC_ALLOW_PARTIAL",
+                     "PG_SYNC_ENABLE_DELETE", "PG_SYNC_DELETE_BULK",
+                     "PG_SYNC_DELETE_BATCH_SIZE", "PG_SYNC_ALLOW_PARTIAL",
                      "CURR_BRANCH"):
             os.environ.pop(name, None)
 
