@@ -21,18 +21,18 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: 检出仓库(news 分支)
+      - name: CheckoutNewsBranch
         uses: actions/checkout@v5
         with:
           ref: news
           fetch-depth: 0
 
-      - name: 设置 Python
+      - name: SetupPython
         uses: actions/setup-python@v5
         with:
           python-version: "3.14"
 
-      - name: 运行转换脚本
+      - name: RunConvertScript
         shell: bash
         run: |
           # 从仓库根运行脚本; 将 Data/Finv/News/FlashFutu/<year>/<yyyymmdd>.json
@@ -45,7 +45,7 @@ jobs:
           # 注意删除发生在 **Data/** 下, 必须由下一步一并 git add, 否则删除只存在于
           # runner 的工作副本里, 容器销毁即丢失 —— 表现为源 JSON 每天删、每天又回来。
           python3 .github/Python/Flash/FlashFutuConvertJSONToJSONL.py --log
-      - name: 提交并推送数据(到 news)
+      - name: CommitAndPushToNews
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

@@ -21,31 +21,31 @@ jobs:
     timeout-minutes: 15
     steps:
       # 第一步: 无论工作流从哪个分支被触发, 都切换到 quote-gold 分支
-      - name: 检出 quote-gold 分支
+      - name: CheckoutQuoteGoldBranch
         uses: actions/checkout@v5
         with:
           ref: quote-gold
           fetch-depth: 0
 
-      - name: 配置 Python
+      - name: ConfigurePython
         uses: actions/setup-python@v5
         with:
           python-version: '3.14'
 
       # 脚本当前仅依赖 Python 标准库; 若未来在 .github/Python/QuoteGold/ 下新增
       # requirements.txt, 本步骤会自动安装其第三方依赖
-      - name: 安装第三方依赖(如有)
+      - name: InstallDependencies
         if: hashFiles('.github/Python/QuoteGold/requirements.txt') != ''
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r .github/Python/QuoteGold/requirements.txt
 
-      - name: 运行合并脚本
+      - name: RunMergeScript
         run: |
           python .github/Python/QuoteGold/MergeToLatestTxt.py
 
       # 脚本正常结束后: 若仓库中存在删除/修改的文件, 提交并推送到 quote-gold
-      - name: 提交并推送变更到 quote-gold
+      - name: CommitAndPushToQuoteGold
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"

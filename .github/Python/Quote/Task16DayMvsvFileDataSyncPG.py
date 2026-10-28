@@ -17,6 +17,11 @@ cdeu.finv_quote_secu_kline_min，作为 Supabase 入库数据的镜像副本。
     - 请求体 {"items": [...]}，字段集合固定 17 列，接口侧 extra="forbid"，
       多传任何未定义字段都会 422；
     - 主键 (usc, ts)；onConflict=skip 只补缺 / onConflict=update 覆盖（默认）；
+    - 字段类型（对应表列）：`ts` / `volume` 为 **bigint**，`date` / `time` 为 integer，
+      `open/high/low/close/paocd/change_price/change_ratio` 为 numeric(20,6)，
+      `turnover` 为 numeric(30,8)。服务端保留 JSON 数字原文作为参数文本，
+      所以 **bigint 列必须下发整数**：`volume: 44.0` → 文本 "44.0" → PostgreSQL
+      `invalid input syntax for type bigint`（22P02）→ 接口 422 / 211303；
     - 成功响应统一信封 {code, data, message}，业务字段在 data 节点：
           {"code": 0, "data": {"affected": n, "mode": "skip|update"},
            "message": "OK"}
@@ -58,7 +63,8 @@ cdeu.finv_quote_secu_kline_min，作为 Supabase 入库数据的镜像副本。
 ----------------------------------------------------------------------------------------
     - 必填：usc 非空且 ≤255、ts 为 ≥0 的整数；缺失/非法 → 整行丢弃并计为异常；
     - date ∈ [19500101, 21001231]、time ∈ [0, 235959]；
-    - volume / turnover ≥ 0；数值列必须有限（NaN / Infinity 会被丢弃，
+    - volume / turnover ≥ 0；volume 目标列是 bigint，非整数值会按整数截断（并计为
+      字段级问题）；其余数值列必须有限（NaN / Infinity 会被丢弃，
       否则 json 序列化会生成非法 JSON）；
     - provider ≤255；未定义的键一律丢弃（接口 extra="forbid"）。
     数据行解析采用「容错模式」（parse_mvsv_rows）：某一行数值非法只丢该行，
@@ -129,6 +135,10 @@ ITEM_FIELDS = (
 )
 ITEM_FIELD_SET = frozenset(ITEM_FIELDS)
 INT_FIELDS = ("ts", "date", "time")
+# 目标列为 bigint 的数值字段：必须以整数下发。服务端把 JSON 数字原文当参数文本，
+# 所以 float 形式的 44.0 会变成文本 "44.0"，被 PostgreSQL 的 bigint 输入函数拒绝
+# （22P02 invalid input syntax for type bigint）→ 接口返回 422 / 211303。
+BIGINT_FIELDS = ("volume",)
 NON_NEGATIVE_FIELDS = ("volume", "turnover")
 TEXT_FIELDS = ("usc", "ext_field", "remark", "provider")
 TEXT_LIMITS = {"usc": 255, "provider": 255}   # 接口约束：usc / provider ≤ 255
@@ -464,6 +474,12 @@ def sanitize_item(row):
         if key in NON_NEGATIVE_FIELDS and number < 0:
             problems.append("%s=%s 为负，已丢弃" % (key, number))
             continue
+        if key in BIGINT_FIELDS:
+            integral = int(number)
+            if integral != number:
+                problems.append("%s=%s 非整数，已截断为 %d（目标列 bigint，小数文本会被拒绝）"
+                                % (key, number, integral))
+            number = integral
         item[key] = number
 
     # 必填项校验（接口 422 的直接来源）

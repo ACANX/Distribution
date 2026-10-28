@@ -7,8 +7,11 @@
 本自测把口径钉死：
     字段校验   —— 只下发接口定义过的 17 列；usc/ts 缺失或非法整行丢弃；
                   越界 date/time、负 volume/turnover、NaN 字段丢弃并上报；
+                  volume（bigint 列）必须下发整数，float 形式的 44.0 会被拒绝；
     前收价     —— FTMM 的 LastClose 必须映射成接口字段 prev_close；
     批量语义   —— 413 自动二分且落库行数守恒；5xx/429 退避重试；4xx 立即失败不重试；
+                  error.retryable=true 的 4xx 会重试；
+                  成功信封 {code, data, message} 的 code 仅 0/1/200/202 算成功；
                   update 模式下 affected 小于提交行数判失败，skip 模式允许；
     容错解析   —— 单行脏数据只丢该行，不放弃整份文件（状态记为 partial）；
                   短名文件头等不可映射情形直接报错，不发写请求；
@@ -46,6 +49,18 @@ def check(name, cond, detail=""):
         FAILS.append(name)
 
 
+def error_envelope(code, message, request_id, retryable=False):
+    """按外部 OpenAPI 契约拼失败响应信封（非 2xx 时不再套一层 data）"""
+    return {
+        "code": code,
+        "message": message,
+        "detail": message,
+        "request_id": request_id,
+        "error": {"code": code, "catalog_version": "finvquant-1",
+                  "retryable": retryable},
+    }
+
+
 def mvsv_header(field_names, chinese=True):
     """按全名头（# FieldName）+ 中文名头（# 字段名称）拼文件头"""
     lines = ["# FieldName : %s" % "|".join(field_names)]
@@ -66,7 +81,11 @@ def data_line(ts, time=93000, date=20261020):
 
 
 class FakeServer:
-    """假目标服务：可注入 503 次数 / 413 阈值 / affected 回传值"""
+    """假目标服务：可注入 503 次数 / 413 阈值 / affected / 业务错误码 / 重试标记
+
+    响应形状按外部 OpenAPI 契约：成功统一为 {code, data, message} 信封，
+    失败为非 2xx + 错误信封 {code, message, detail, request_id, error}。
+    """
 
     def __init__(self):
         class Handler(BaseHTTPRequestHandler):
@@ -75,38 +94,56 @@ class FakeServer:
             reject_over = None
             affected = None
             status_4xx = None
+            retryable_4xx = 0
+            success_code = 0
+            mode = "update"
 
             def log_message(self, *args):
                 pass
+
+            def reply(self, status, payload):
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(payload).encode())
 
             def do_POST(self):
                 body = json.loads(self.rfile.read(
                     int(self.headers.get("Content-Length") or 0)).decode())
                 items = body["items"]
                 Handler.calls.append((self.path, items))
+                # 模拟线上列类型约束：volume 是 bigint（numeric_precision=64, scale=0），
+                # 服务端把 JSON 数字原文当参数文本，float 的 44.0 → "44.0" 被 PG 拒绝
+                # （22P02）→ 422 / 211303。客户端必须下发整数。
+                for item in items:
+                    if isinstance(item.get("volume"), float):
+                        self.reply(422, error_envelope(
+                            211303, "数据不满足业务约束", "rid-bigint"))
+                        return
+                if Handler.retryable_4xx > 0:
+                    Handler.retryable_4xx -= 1
+                    self.reply(422, error_envelope(
+                        211303, "数据库约束冲突", "rid-retry", retryable=True))
+                    return
                 if Handler.status_4xx:
-                    self.send_response(Handler.status_4xx)
-                    self.end_headers()
-                    self.wfile.write(b'{"detail":"rejected"}')
+                    self.reply(Handler.status_4xx, error_envelope(
+                        211003, "字段类型不匹配", "rid-4xx"))
                     return
                 if Handler.fail_5xx > 0:
                     Handler.fail_5xx -= 1
-                    self.send_response(503)
-                    self.end_headers()
-                    self.wfile.write(b'{"detail":"db down"}')
+                    self.reply(503, error_envelope(
+                        211302, "数据库不可用", "rid-503", retryable=True))
                     return
                 if Handler.reject_over and len(items) > Handler.reject_over:
-                    self.send_response(413)
-                    self.end_headers()
-                    self.wfile.write(b'{"detail":"too many"}')
+                    self.reply(413, error_envelope(211201, "items 超过上限",
+                                                   "rid-413"))
                     return
                 affected = Handler.affected if Handler.affected is not None \
                     else len(items)
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps({"affected": affected,
-                                             "mode": "update"}).encode())
+                self.reply(200, {"code": Handler.success_code,
+                                 "data": {"affected": affected,
+                                          "mode": Handler.mode},
+                                 "message": "OK"})
 
         self.handler = Handler
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -115,12 +152,15 @@ class FakeServer:
         self.calls = Handler.calls
 
     def reset(self, fail_5xx=0, reject_over=None, affected=None,
-              status_4xx=None):
+              status_4xx=None, retryable_4xx=0, success_code=0, mode="update"):
         self.calls.clear()
         self.handler.fail_5xx = fail_5xx
         self.handler.reject_over = reject_over
         self.handler.affected = affected
         self.handler.status_4xx = status_4xx
+        self.handler.retryable_4xx = retryable_4xx
+        self.handler.success_code = success_code
+        self.handler.mode = mode
         return self
 
     def stop(self):
@@ -158,6 +198,14 @@ def test_sanitize():
     check("字符串数值可转换",
           item == {"usc": "A", "ts": 1, "close": 10.35, "time": 93000}, item)
 
+    item, problems = PG.sanitize_item({"usc": "A", "ts": 1, "volume": 44.0})
+    check("volume 下发整数（bigint 列不接受 44.0）",
+          item == {"usc": "A", "ts": 1, "volume": 44}
+          and isinstance(item["volume"], int) and problems == [], (item, problems))
+    item, problems = PG.sanitize_item({"usc": "A", "ts": 1, "volume": 44.5})
+    check("volume 非整数截断并上报",
+          item["volume"] == 44 and len(problems) == 1, (item, problems))
+
 
 def test_client(server):
     PG.RETRY_BACKOFF_SECONDS = 0.01
@@ -165,11 +213,23 @@ def test_client(server):
 
     server.reset()
     result = client.upsert([{"usc": "A", "ts": 1}, {"usc": "B", "ts": 2}])
-    check("正常 Upsert 结果",
+    check("正常 Upsert 结果（取自信封 data 节点）",
           result == {"affected": 2, "mode": "update", "requests": 1}, result)
     check("请求路径与 onConflict",
-          server.calls[-1][0] == "/API/V1/Meta/Finv/Quote/Secu/KLine/Min/Upsert"
-                                "?onConflict=update", server.calls[-1][0])
+          server.calls[-1][0] == PG.API_UPSERT_PATH + "?onConflict=update",
+          server.calls[-1][0])
+
+    for code in (0, 1, 200, 202):
+        server.reset(success_code=code)
+        check("信封 code=%d 视为成功" % code,
+              client.upsert([{"usc": "A", "ts": 3}])["affected"] == 1)
+
+    server.reset(success_code=211003)
+    try:
+        client.upsert([{"usc": "A", "ts": 4}])
+        check("2xx 但 code 非成功码判失败", False)
+    except PG.SyncRequestError as e:
+        check("2xx 但 code 非成功码判失败", "code=211003" in str(e), e)
 
     server.reset(fail_5xx=2)
     check("5xx 重试后成功", client.upsert([{"usc": "A", "ts": 3}])["affected"] == 1)
@@ -194,9 +254,21 @@ def test_client(server):
     except PG.SyncRequestError as e:
         check("update 模式 affected 偏小判失败", "affected" in str(e), e)
     check("skip 模式允许 affected 偏小",
-          PG.parse_upsert_response('{"affected":1,"mode":"skip"}', 3)["affected"] == 1)
+          PG.parse_upsert_response('{"code":0,"data":{"affected":1,'
+                                   '"mode":"skip"},"message":"OK"}',
+                                   3)["affected"] == 1)
+    check("信封解析 affected / mode",
+          PG.parse_upsert_response('{"code":0,"data":{"affected":3,'
+                                   '"mode":"update"},"message":"OK"}', 3)
+          == {"affected": 3, "mode": "update", "requests": 1})
+    check("旧版平铺结构兼容",
+          PG.parse_upsert_response('{"affected":1,"mode":"skip"}', 3)
+          ["affected"] == 1)
     check("非 JSON 响应不崩",
           PG.parse_upsert_response("oops", 2)["affected"] is None)
+    check("信封缺 data 节点不崩",
+          PG.parse_upsert_response('{"code":0,"message":"OK"}', 2)
+          ["affected"] is None)
 
     server.reset(status_4xx=422)
     try:
@@ -205,6 +277,32 @@ def test_client(server):
     except PG.SyncRequestError as e:
         check("422 立即失败不重试", len(server.calls) == 1 and "422" in str(e),
               (len(server.calls), e))
+        check("错误信封带 code / detail / request_id",
+              "code=211003" in str(e) and "字段类型不匹配" in str(e)
+              and "rid-4xx" in str(e), e)
+
+    server.reset(retryable_4xx=2)
+    result = client.upsert([{"usc": "A", "ts": 8}])
+    check("error.retryable=true 的 4xx 会重试",
+          result["affected"] == 1 and len(server.calls) == 3,
+          (result, len(server.calls)))
+
+    detail, retryable = PG.parse_error_response(
+        500, json.dumps(error_envelope(211301, "数据库错误", "rid-500",
+                                       retryable=True)))
+    check("错误信封解析 retryable",
+          retryable and "code=211301" in detail and "rid-500" in detail, detail)
+    detail, retryable = PG.parse_error_response(400, "not json")
+    check("非 JSON 错误体降级不崩",
+          detail == "HTTP 400：not json" and retryable is False, detail)
+
+    server.reset()
+    try:
+        client.upsert([{"usc": "A", "ts": 9, "volume": 44.0}])
+        check("volume 浮点会被服务端拒绝（回归护栏）", False)
+    except PG.SyncRequestError as e:
+        check("volume 浮点会被服务端拒绝（回归护栏）",
+              "211303" in str(e), e)
 
     try:
         PG.QuoteSyncClient(server.base, on_conflict="bad")
@@ -241,6 +339,10 @@ def test_sync_file(server, tmp):
           all(it["provider"] == "FTMM" for c in server.calls for it in c[1]))
     check("前收价落到 prev_close",
           all(it["prev_close"] == 10.0 for c in server.calls for it in c[1]))
+    check("volume 一律为整数（否则 bigint 列 22P02 / 211303）",
+          all(isinstance(it["volume"], int)
+              for c in server.calls for it in c[1]),
+          [it["volume"] for c in server.calls for it in c[1]][:5])
 
     with open(path, "w", encoding="utf-8") as f:
         f.write(mvsv_header(LONG_NAMES.split("|")))
