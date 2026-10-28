@@ -7,8 +7,11 @@
 # 文件, upsert 幂等可重跑)。
 #   - Task06DayMvsvFileDataSyncSupabase: Day/ (SecuQuote 11 列格式)
 #   - Task16DayMvsvFileDataSyncPG: FTMM/V5/ 的同一批数据先增量镜像到自建行情服务
-#     (POST {URL_QUOTE_SYNC_BASE}/API/V1/Meta/Finv/Quote/Secu/KLine/Min/Upsert,
-#      接口文档见 .github/Python/ApiUpsertBatchDelete.md); 该步骤只写数据、不删文件
+#     (POST {URL_QUOTE_SYNC_BASE}/OpenAPI/V1/Meta/Finv/Quote/Cdeu/Min/Upsert,
+#      成功响应统一信封 {code, data{affected, mode}, message}(code 0/1/200/202 均算
+#      成功), 失败为非 2xx 错误信封 {code, message, detail, request_id, error};
+#      请求体字段见 .github/Python/ApiUpsertBatchDelete.md, 响应契约见 FinvQuant
+#      仓库 Docs/OpenAPI/Quote/Cdeu/Min/Upsert.md); 该步骤只写数据、不删文件
 #   - Task16DayMvsvFileDataSyncSupabase: FTMM/V5/ (FTMM 12 列格式, 按文件名日期升序)
 # 触发方式:
 #   - 定时触发: 每 5 小时自动运行一次(UTC 0/5/10/15/20 点的第 17 分, 即北京时间
@@ -50,7 +53,7 @@ on:
       batchSize:
         description: "数据库单批提交行数"
         required: false
-        default: "100"
+        default: "121"
       fileLimit:
         description: "单次运行的文件数上限"
         required: false
@@ -65,23 +68,23 @@ permissions:
   contents: write
 
 jobs:
-  sync-to-pg:
+  QuoteDataSyncToPG:
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
     steps:
-      - name: 检出仓库(指定分支)
+      - name: CheckoutRepository
         uses: actions/checkout@v5
         with:
           ref: 'quote'
           fetch-depth: 0
 
-      - name: 设置Python
+      - name: SetupPython
         uses: actions/setup-python@v5
         with:
           python-version: "3.14"
 
-      # - name: 运行入库脚本
+      # - name: RunSupabaseIngest
       #   env:
       #     GIT_COMMIT_TOKEN: ${{ secrets.GIT_COMMIT_TOKEN }}
       #     SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
