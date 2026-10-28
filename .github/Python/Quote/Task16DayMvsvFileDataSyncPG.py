@@ -106,7 +106,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))       # <仓库根>/.github/P
 # ---------------------------------------------------------------------------
 
 # 目标服务接口（见 .github/Python/ApiUpsertBatchDelete.md §2）
-API_UPSERT_PATH = "/API/V1/Meta/Finv/Quote/Secu/KLine/Min/Upsert"
+API_UPSERT_PATH = "/OpenAPI/V1/Meta/Finv/Quote/Cdeu/Min/Upsert"
 
 # 接口允许的 items 字段（extra="forbid"，多传即 422），顺序固定以便复现请求体
 ITEM_FIELDS = (
