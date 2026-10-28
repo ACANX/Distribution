@@ -48,7 +48,7 @@ def check(name, cond, detail=""):
 def make_row(usc, ts, **extra):
     """构造一条源表记录（默认字段都合法）"""
     row = {"usc": usc, "ts": ts, "date": 20261020, "time": 93000,
-           "prev_close": 10.0, "open": 10.1, "high": 10.5, "low": 9.9,
+           "last_close": 10.0, "open": 10.1, "high": 10.5, "low": 9.9,
            "close": 10.2, "volume": 1000, "turnover": 10200.5,
            "change_price": 0.2, "change_ratio": 2.0, "provider": "FTMM"}
     row.update(extra)
@@ -159,7 +159,7 @@ def run_migrate(rows, batch_size=100, max_batches=100, enable_delete=True,
 def test_build_item():
     item, problems = M.build_item(make_row("A", 1))
     check("正常行无问题", problems == [] and item["usc"] == "A"
-          and item["prev_close"] == 10.0, (item, problems))
+          and item["last_close"] == 10.0, (item, problems))
     check("字段顺序与接口一致",
           list(item) == [k for k in M.ITEM_FIELDS if k in item], list(item))
 
@@ -169,7 +169,10 @@ def test_build_item():
           item == {"usc": "A", "ts": 1} and problems == [], (item, problems))
 
     item, _ = M.build_item({"usc": "A", "ts": 1, "last_close": 9.5})
-    check("last_close 映射为 prev_close", item.get("prev_close") == 9.5, item)
+    check("last_close 原样下发", item.get("last_close") == 9.5, item)
+    item, _ = M.build_item({"usc": "A", "ts": 1, "prev_close": 9.6})
+    check("旧列名 prev_close 兼容读到并映射为 last_close",
+          item.get("last_close") == 9.6, item)
 
     item, problems = M.build_item({"usc": "A", "ts": 1, "close": "abc",
                                   "volume": -1, "date": 18000101,
@@ -496,7 +499,7 @@ def test_client(server):
     check("正常 Upsert 结果",
           result == {"affected": 2, "mode": "update", "requests": 1}, result)
     check("请求路径与 onConflict",
-          server.calls[-1][0] == "/API/V1/Meta/Finv/Quote/Secu/KLine/Min/Upsert"
+          server.calls[-1][0] == "/API/V1/Meta/Finv/Quote/Cdeu/Min/Upsert"
                                 "?onConflict=update", server.calls[-1][0])
 
     server.reset(fail_5xx=2)
@@ -540,7 +543,7 @@ def test_client(server):
         check("非法 onConflict 报错", True)
 
     check("URL 缺协议补 http",
-          M.normalize_base_url("1.2.3.4:18001") == "http://1.2.3.4:18001")
+          M.normalize_base_url("1.2.3.4:16001") == "http://1.2.3.4:16001")
     for bad in ("   ", "ftp://h", "http://"):
         try:
             M.normalize_base_url(bad)
