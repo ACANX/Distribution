@@ -8,7 +8,7 @@ Task16 —— FTMM V5 行情文件增量同步到自建行情服务（Upsert RES
 ----------------------------------------------------------------------------------------
 把本仓库 quote 分支 Archive/Finv/SecuQuote/FTMM/V5/ 下的 .mvsv 行情文件读取解析后，
 按批次（默认 500 行/批，可配置）以 HTTP Upsert
-（POST {BASE}/API/V1/Meta/Finv/Quote/Secu/KLine/Min/Upsert?onConflict=update）
+（POST {BASE}/OpenAPI/V1/Meta/Finv/Quote/Cdeu/Min/Upsert?onConflict=update）
 增量写到另一台自建行情服务（FinvQuoteDataDeDup）的 PostgreSQL 表
 public.finv_quote_secu_kline_min，作为 Supabase 入库数据的镜像副本。
 
