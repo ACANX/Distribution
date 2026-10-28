@@ -45,10 +45,15 @@ cdeu.finv_quote_secu_kline_min，作为 Supabase 入库数据的镜像副本。
     - 两条链路的读取口径（目录、文件名排序、fileLimit 语义）必须保持一致，
       本脚本对数据行采用容错解析 parse_mvsv_rows（见 §三），
       修改任一侧的目录 / 列映射时请同步另一侧；
-    - 本脚本只写数据、**不删除任何源文件**：源文件的删除仍由 Task16
-      Supabase 任务在入库成功且删除开关打开时执行；
-    - 工作流里本步骤排在 Supabase 步骤之前，因此本步骤失败即中断后续步骤，
-      源文件不会被删除，下一轮（Upsert 幂等）重跑即可补齐，不会丢数据。
+    - 源文件删除：**默认开启**；单个文件全部批次成功后，本脚本调用 GitHub
+      Contents API 删除 quote 分支上的该源文件（需 GIT_COMMIT_TOKEN，缺失即退出 1）；
+      PG_SYNC_ENABLE_DELETE=false/0 时降级为安全模式，只打印待删除清单；
+    - 删除是安全的：文件解析异常 / 任一批次失败一律保留；partial 文件仅在
+      PG_SYNC_ALLOW_PARTIAL 开启（即不视为失败）时才删；
+    - 删除发生在全部写请求完成之后，因此本步骤失败也不会出现「先删后写失败」；
+      删除失败只把退出码置 1（数据已落库，重跑 / 手工删除即可）；
+    - 删除是队列前进的前提（fileLimit 只取按日期升序的前 N 个），
+      关闭删除会每轮重复处理同一批。
 
 二、与 Supabase 入库的字段差异
 ----------------------------------------------------------------------------------------
@@ -87,17 +92,25 @@ cdeu.finv_quote_secu_kline_min，作为 Supabase 入库数据的镜像副本。
     PG_SYNC_ON_CONFLICT   冲突策略 skip / update（默认 update，只接受这两个值）
     PG_SYNC_TIMEOUT       单请求超时秒数（默认 60）
     PG_SYNC_RETRIES       失败重试次数（默认 2；仅对网络错误 / 5xx / 429 重试）
-    PG_SYNC_ALLOW_PARTIAL "true"/"1" 时 partial 文件不算失败（默认严格：算失败）
+    PG_SYNC_ALLOW_PARTIAL "true"/"1" 时 partial 文件不算失败（默认严格：算失败）；
+                          partial 文件也只有在此时才会被删除
+    PG_SYNC_ENABLE_DELETE  删除开关，**默认开启**；设为 "false"/"0" 降级为安全模式
+                          （不调删除接口，只打印「待删除」清单，队列不会前进）
+    GIT_COMMIT_TOKEN      删除用的 GitHub 令牌（需本仓库 contents:write）；
+                          开启删除但缺失即按失败退出
+    GIT_REPO_SLUG         可选，"owner/repo" 覆盖（默认从 .git/config 的 origin 解析）
+    GIT_API_BASE          可选，GitHub API 根（默认 https://api.github.com/repos；
+                          自测时指向本地假服务）
     CURR_BRANCH / GITHUB_REF_NAME  或命令行第 1 参数：要处理的分支名（默认 quote）
 
 五、退出码
 ----------------------------------------------------------------------------------------
-    0 = 全部文件完整镜像成功；或目录里没有待同步文件；或仅有 partial 文件且
-        PG_SYNC_ALLOW_PARTIAL 已开启；
+    0 = 全部文件完整镜像成功（删除开关开启时，还要求待删文件均删除成功）；
+        或目录里没有待同步文件；或仅有 partial 文件且 PG_SYNC_ALLOW_PARTIAL 已开启；
     1 = 致命错误（URL 缺失 / 地址非法 / 分支未定）；存在 failed 文件；
-        或存在 partial 文件而未开启 PG_SYNC_ALLOW_PARTIAL。
-    说明：本步骤排在 Supabase 入库步骤之前，退出码 1 会中断后续步骤，
-    从而保证「源文件在镜像写入未完整成功时不会被删除」。
+        存在 partial 文件而未开启 PG_SYNC_ALLOW_PARTIAL；
+        或删除开关开启后存在删除失败（数据已落库，重跑 / 手动删除可修复）。
+    说明：源文件只在「该文件全部批次成功」后才删除，因此退出码 1 不会丢数据。
 
 六、实现约束（自包含）
 ----------------------------------------------------------------------------------------
@@ -108,6 +121,7 @@ cdeu.finv_quote_secu_kline_min，作为 Supabase 入库数据的镜像副本。
 【环境要求】Python 3.8+，仅标准库；需能直连 URL_QUOTE_SYNC_BASE 指定的服务。
 """
 
+import configparser
 import json
 import math
 import os
@@ -170,6 +184,12 @@ RETRY_BACKOFF_SECONDS = 3.0                    # 第 n 次重试前等待 n * ba
 SAMPLE_LIMIT = 5
 
 USER_AGENT = "Distribution-QuoteSync/1.0 (+https://github.com/ACANX/Distribution)"
+
+# 源文件删除（GitHub Contents API）：默认开启，PG_SYNC_ENABLE_DELETE=false 关闭
+GITHUB_API_BASE = "https://api.github.com/repos"
+GITHUB_TIMEOUT = 30
+DELETE_COMMIT_MESSAGE = "[Task16PG] delete synced %s"
+REMOTE_FILE_ABSENT = "absent"                  # github_file_sha 的“文件不存在”哨兵
 
 # 源目录与文件名规则（quote 分支内相对路径）
 SOURCE_DIR = "Archive/Finv/SecuQuote/FTMM/V5"
@@ -825,6 +845,171 @@ def parse_mvsv_rows(path, column_types):
 
 
 # ---------------------------------------------------------------------------
+# 源文件删除（GitHub Contents API，仅标准库）
+# ---------------------------------------------------------------------------
+
+def resolve_github_api_base():
+    """GitHub API 根：可用 GIT_API_BASE 覆盖（自测指向本地假服务）"""
+    value = os.environ.get("GIT_API_BASE", "").strip()
+    return (value or GITHUB_API_BASE).rstrip("/")
+
+
+def split_repo_slug(text):
+    """把 "owner/repo"（可带 .git / 前后斜杠）拆成 (owner, repo)
+
+    :return: (owner, repo)；无法拆成两段时返回 (None, None)
+    """
+    slug = (text or "").strip().strip("/")
+    if slug.endswith(".git"):
+        slug = slug[:-4]
+    parts = [part for part in slug.split("/") if part]
+    if len(parts) != 2:
+        return None, None
+    return parts[0], parts[1]
+
+
+def split_repo_from_url(url):
+    """从 git remote URL 解析 (owner, repo)：支持 https:// 与 git@host:owner/repo"""
+    text = (url or "").strip()
+    if not text:
+        return None, None
+    if "://" in text:
+        text = text.split("://", 1)[1]
+        text = text.split("/", 1)[1] if "/" in text else ""
+    elif text.startswith("git@") and ":" in text:
+        text = text.split(":", 1)[1]
+    return split_repo_slug(text)
+
+
+def load_owner_repo(root):
+    """解析本仓库 owner/repo：GIT_REPO_SLUG 优先，其次 .git/config 的 origin url
+
+    :param root: 仓库根目录
+    :return: (owner, repo)；无法解析时返回 (None, None)
+    """
+    env_slug = os.environ.get("GIT_REPO_SLUG", "").strip()
+    if env_slug:
+        return split_repo_slug(env_slug)
+    parser = configparser.ConfigParser()
+    try:
+        parser.read(os.path.join(root, ".git", "config"), encoding="utf-8")
+    except (OSError, configparser.Error):
+        return None, None
+    for section in parser.sections():
+        if section.replace(" ", "").strip().lower() == 'remote"origin"':
+            return split_repo_from_url(parser.get(section, "url", fallback=""))
+    return None, None
+
+
+def github_request(method, url, token, body_bytes, timeout):
+    """最小 GitHub REST 调用
+
+    :return: (status, text, error)；网络层失败时 status=None、error 为原因
+    """
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": USER_AGENT,
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    if token:
+        headers["Authorization"] = "Bearer %s" % token
+    if body_bytes is not None:
+        headers["Content-Type"] = "application/json"
+    request = urllib.request.Request(url, data=body_bytes, method=method,
+                                     headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as resp:
+            return resp.status, resp.read().decode("utf-8", "replace"), None
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode("utf-8", "replace"), None
+    except OSError as e:                        # 含 URLError / TimeoutError
+        return None, "", "网络错误: %s" % e
+
+
+def github_file_sha(api_base, owner, repo, path_key, branch, token, timeout):
+    """取远端文件 blob sha
+
+    :return: (sha, error)；error 非空表示失败；文件不存在时返回
+             (REMOTE_FILE_ABSENT, None) —— 调用方按「已处理」对待
+    """
+    url = "%s/%s/%s/contents/%s?ref=%s" % (
+        api_base, owner, repo, urllib.parse.quote(path_key, safe="/"),
+        urllib.parse.quote(branch, safe=""))
+    status, text, error = github_request("GET", url, token, None, timeout)
+    if error:
+        return None, error
+    if status == 404:
+        return REMOTE_FILE_ABSENT, None
+    if not 200 <= status < 300:
+        return None, "HTTP %s：%s" % (status, snippet(text))
+    try:
+        sha = json.loads(text).get("sha")
+    except (ValueError, AttributeError, TypeError):
+        return None, "响应不是合法 JSON 对象"
+    if not sha:
+        return None, "响应缺少 sha 字段"
+    return sha, None
+
+
+def delete_remote_file(api_base, owner, repo, branch, path_key, token,
+                       timeout=GITHUB_TIMEOUT):
+    """删除分支上的单个源文件（Contents API：GET sha → DELETE）
+
+    :return: dict {"success": bool, "already_gone": bool, "message": str|None}
+    """
+    def fail(message):
+        print("❌ 删除失败：%s/%s@%s %s —— %s"
+              % (owner, repo, branch, path_key, message))
+        return {"success": False, "already_gone": False, "message": message}
+
+    if not (token or "").strip():
+        return fail("令牌缺失（GIT_COMMIT_TOKEN）")
+
+    sha, error = github_file_sha(api_base, owner, repo, path_key, branch,
+                                 token, timeout)
+    if error:
+        return fail(error)
+    if sha == REMOTE_FILE_ABSENT:
+        print("⚠️ 远端文件已不存在（视为已处理）：%s" % path_key)
+        return {"success": True, "already_gone": True, "message": None}
+
+    url = "%s/%s/%s/contents/%s" % (
+        api_base, owner, repo, urllib.parse.quote(path_key, safe="/"))
+    body = json.dumps({
+        "message": DELETE_COMMIT_MESSAGE % path_key,
+        "sha": sha,
+        "branch": branch,
+    }, ensure_ascii=False).encode("utf-8")
+    status, text, error = github_request("DELETE", url, token, body, timeout)
+    if error:
+        return fail(error)
+    if 200 <= status < 300:
+        print("🗑️ 已删除源文件：%s（HTTP %s）" % (path_key, status))
+        return {"success": True, "already_gone": False, "message": None}
+
+    parsed = None
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        pass
+    reason = "HTTP %s" % status
+    if isinstance(parsed, dict) and parsed.get("message"):
+        reason = "%s：%s" % (reason, parsed["message"])
+    return fail(reason)
+
+
+def log_path_list(title, paths, limit=20):
+    """打印相对路径清单（超过 limit 只给总数和首几项，避免刷屏）"""
+    if not paths:
+        return
+    print("%s（%d 个）：" % (title, len(paths)))
+    for rel_path in paths[:limit]:
+        print("    - %s" % rel_path)
+    if len(paths) > limit:
+        print("    - ……其余 %d 个同上" % (len(paths) - limit))
+
+
+# ---------------------------------------------------------------------------
 # 单文件同步
 # ---------------------------------------------------------------------------
 
@@ -1017,6 +1202,7 @@ def main():
     retries = env_int_zero("PG_SYNC_RETRIES", DEFAULT_RETRIES)
     on_conflict = resolve_on_conflict()
     allow_partial = env_bool("PG_SYNC_ALLOW_PARTIAL", False)
+    enable_delete = env_bool("PG_SYNC_ENABLE_DELETE", True)
 
     print("======== 自建行情服务同步开始（Task16 / FTMM V5 / PG）========")
     print("分支 (branch) = %s" % branch)
@@ -1024,6 +1210,9 @@ def main():
           % (batch_size, file_limit, on_conflict))
     print("超时 (timeout) = %ds，重试 (retries) = %d，允许部分同步 (allowPartial) = %s"
           % (timeout, retries, "是" if allow_partial else "否（默认严格）"))
+    print("删除开关 (enableDelete) = %s"
+          % ("开（同步成功后删除源文件）" if enable_delete
+             else "关（安全模式：只列待删除清单）"))
 
     base_url = os.environ.get("URL_QUOTE_SYNC_BASE", "").strip()
     if not base_url:
@@ -1059,6 +1248,7 @@ def main():
         print("  %2d. %s（日期=%d，标识=%s）" % (idx, rel_path, date, code))
 
     failed_files, partial_files = [], []
+    ok_files, partial_paths = [], []
     for rel_path, _date, _code in picked:
         try:
             outcome = sync_file(client, root, rel_path, batch_size, column_types)
@@ -1075,18 +1265,58 @@ def main():
             print("⚠️ %s 部分同步（有行/字段被丢弃）：%s"
                   % (rel_path, outcome["failure_digest"]))
             partial_files.append("%s：%s" % (rel_path, outcome["failure_digest"]))
+            partial_paths.append(rel_path)
+        else:
+            ok_files.append(rel_path)
 
     synced = len(picked) - len(failed_files) - len(partial_files)
     print("======== 自建行情服务同步结束（Task16 / FTMM V5 / PG）========")
     print("合计：文件 %d 份，完整同步 %d 份，部分同步 %d 份，失败 %d 份"
           % (len(picked), synced, len(partial_files), len(failed_files)))
+
+    # ---- 源文件删除：只删「全部批次成功」的文件；partial 需显式放行 ----
+    candidates = list(ok_files)
+    if allow_partial and partial_paths:
+        print("⚠️ 已开启 PG_SYNC_ALLOW_PARTIAL：%d 个 partial 文件（含被丢弃的行/字段）"
+              "也会被删除，被丢弃的数据将不再有源文件可回溯" % len(partial_paths))
+        candidates.extend(partial_paths)
+
+    deleted, already_gone, delete_failed = [], [], []
+    if candidates and not enable_delete:
+        print("🔒 删除开关关闭（PG_SYNC_ENABLE_DELETE）：%d 个文件保留不删"
+              % len(candidates))
+        log_path_list("待删除清单（开启删除后下一轮即可处理）", candidates)
+    elif candidates:
+        token = os.environ.get("GIT_COMMIT_TOKEN", "").strip()
+        api_base = resolve_github_api_base()
+        owner, repo = load_owner_repo(root)
+        if not token:
+            delete_failed.append("GIT_COMMIT_TOKEN 缺失（需要本仓库 contents:write 令牌）")
+        elif not (owner and repo):
+            delete_failed.append("未能解析本仓库 owner/repo（检查 .git/config 或设 GIT_REPO_SLUG）")
+        else:
+            print("-------- 删除源文件（%d 个，%s/%s@%s）--------"
+                  % (len(candidates), owner, repo, branch))
+            for rel_path in candidates:
+                result = delete_remote_file(api_base, owner, repo, branch,
+                                            rel_path, token)
+                if not result["success"]:
+                    delete_failed.append("%s：%s" % (rel_path, result["message"]))
+                elif result["already_gone"]:
+                    already_gone.append(rel_path)
+                else:
+                    deleted.append(rel_path)
+
+    if enable_delete and (deleted or already_gone or delete_failed):
+        print("删除合计：已删除 %d 份，远端已不存在 %d 份，删除失败 %d 份"
+              % (len(deleted), len(already_gone), len(delete_failed)))
+
     if partial_files:
         print("部分同步清单（有行/字段被丢弃，数据不完整）：")
         for item in partial_files:
             print("    - %s" % item)
     if failed_files:
-        print("失败清单（修复后重跑即可补齐，Upsert 幂等；"
-              "本步骤失败会阻断后续 Supabase 步骤，源文件不会被删除）：")
+        print("失败清单（修复后重跑即可补齐，Upsert 幂等；源文件已保留）：")
         for item in failed_files:
             print("    - %s" % item)
 
@@ -1095,6 +1325,11 @@ def main():
     if partial_files and not allow_partial:
         print("❌ 存在部分同步的文件：默认严格模式按失败返回；"
               "若确认可接受，设 PG_SYNC_ALLOW_PARTIAL=true 降级为告警")
+        return 1
+    if delete_failed:
+        print("❌ 存在删除失败的源文件：数据已落库（Upsert 幂等），"
+              "可直接重跑本任务或手动删除对应文件")
+        log_path_list("删除失败清单", delete_failed)
         return 1
     return 0
 

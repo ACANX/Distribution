@@ -1,25 +1,26 @@
-# 行情文件增量入库 Supabase PG + 验证后删除源文件:
-# 读取 quote 分支 Archive/Finv/SecuQuote/Day/ 与 Archive/Finv/SecuQuote/FTMM/V5/
-# 下的 .mvsv 行情文件, 解析后按批次(默认 50 行/批, 可配置)以 PostgREST
-# Upsert(on_conflict=ts,usc) 字段级增量更新到 Supabase 表 finv_quote_secu_kline_min;
-# 单个文件全部批次成功且删除开关(enableDelete)开启时, 才通过 Contents API 删除
-# quote 分支上对应的源文件; 任一批次失败则保留源文件(单批失败不阻塞后续批与后续
-# 文件, upsert 幂等可重跑)。
+# 行情文件增量入库自建行情服务 PG + 验证后删除源文件:
+# 读取 quote 分支 Archive/Finv/SecuQuote/FTMM/V5/ 下的 .mvsv 行情文件, 解析后按
+# 批次(默认 100 行/批)以 HTTP Upsert 写入自建行情服务; 单个文件全部批次成功后,
+# 默认(删除开关 PG_SYNC_ENABLE_DELETE=true)通过 GitHub Contents API 删除 quote
+# 分支上对应的源文件; 任一批次失败则保留源文件(单批失败不阻塞后续批与后续文件,
+# Upsert 幂等可重跑)。开关设 false / 带提交 enableDelete=false 时降级为只列清单。
 #   - Task06DayMvsvFileDataSyncSupabase: Day/ (SecuQuote 11 列格式)
 #   - Task16DayMvsvFileDataSyncPG: FTMM/V5/ 的同一批数据先增量镜像到自建行情服务
 #     (POST {URL_QUOTE_SYNC_BASE}/OpenAPI/V1/Meta/Finv/Quote/Cdeu/Min/Upsert,
 #      成功响应统一信封 {code, data{affected, mode}, message}(code 0/1/200/202 均算
 #      成功), 失败为非 2xx 错误信封 {code, message, detail, request_id, error};
 #      请求体字段见 .github/Python/ApiUpsertBatchDelete.md, 响应契约见 FinvQuant
-#      仓库 Docs/OpenAPI/Quote/Cdeu/Min/Upsert.md); 该步骤只写数据、不删文件
+#      仓库 Docs/OpenAPI/Quote/Cdeu/Min/Upsert.md); 写成功后默认删除源文件:
+#      单个文件全部批次成功才调 GitHub Contents API 删除 quote 分支上该文件
+#      (删除失败只影响退出码, 可重跑); partial 文件仅在 PG_SYNC_ALLOW_PARTIAL
+#      开启时才会被删; 关闭开关: PG_SYNC_ENABLE_DELETE=false
 #   - Task16DayMvsvFileDataSyncSupabase: FTMM/V5/ (FTMM 12 列格式, 按文件名日期升序)
 # 触发方式:
 #   - 定时触发: 每 5 小时自动运行一次(UTC 0/5/10/15/20 点的第 17 分, 即北京时间
 #     08:17 / 13:17 / 18:17 / 23:17 / 04:17), batchSize/fileLimit 取默认值;
-#     删除开关由仓库变量 SUPABASE_SCHEDULED_DELETE 控制
-#     (未配置或非 "true" = 安全模式不删; 配置为 "true" = 定时运行也执行删除)
+#     删除默认开启, 仓库变量 PG_SYNC_SCHEDULED_DELETE=false 可关闭
 #   - 手动触发: Actions 页 Run workflow, 各输入以页面填写为准
-#     (enableDelete 仅作用于本次运行中全部批次成功的文件)
+#     (enableDelete 默认 true; 只对本次运行中全部批次成功的文件生效)
 # 注意:
 #   - 处理顺序按文件名日期升序, 同日期按证券代码自然排序;
 #   - 单次运行最多处理 fileLimit 个文件, 其余留待下次;
@@ -28,13 +29,13 @@
 #   - 依赖 Secrets: SUPABASE_PROJECT_REF / SUPABASE_KEY(Supabase Dashboard > Settings > API);
 #   - 依赖 Secrets: URL_QUOTE_SYNC_BASE(自建行情服务基础地址, 如 http://<实例IP>:16001,
 #     无鉴权, 服务端按来源 IP 白名单放行); 该 Secret 缺失时 Task16...PG 步骤直接失败;
-#   - 步骤顺序为 Task16DayMvsvFileDataSyncPG → Task16DayMvsvFileDataSyncSupabase:
-#     镜像写入未完整成功时中断, 避免源文件被 Supabase 步骤删除后镜像永久缺数
-#     (Upsert 幂等, 修复后重跑自动补齐); 如确需弱化该保护, 可给 PG 步骤加
-#     continue-on-error: true; 若只是个别行/字段不合法导致 partial 阻塞队列,
-#     可配仓库变量 PG_SYNC_ALLOW_PARTIAL=true 把 partial 降级为告警(仍退出 0);
+#   - 步骤顺序为 Task16DayMvsvFileDataSyncPG【删除已内置】→ (可选) Supabase 步骤:
+#     源文件只在「该文件全部批次成功」后才删, 所以写入失败不会丢数据
+#     (Upsert 幂等, 修复后重跑自动补齐); 若只是个别行/字段不合法导致 partial
+#     阻塞队列, 可配仓库变量 PG_SYNC_ALLOW_PARTIAL=true 把 partial 降级为告警
+#     (注意: 开启后 partial 文件也会被删除, 被丢弃的行将不再有源文件可回溯);
 #   - 建议首轮 batchSize=50 / fileLimit=5 / enableDelete=false 试运行核对日志,
-#     确认入库与"待删除"清单无误后再开删除开关。
+#     确认入库与"待删除"清单无误后即可按默认的删除开关运行。
 name: quote.06DayMvsvFileDataSyncPG
 
 on:
@@ -59,7 +60,7 @@ on:
         required: false
         default: "500"
       enableDelete:
-        description: "删除开关(仅对本次全部批次成功的文件生效)"
+        description: "删除开关(默认开=全部批次成功的文件同步后就删; 首次上线建议先带 false 看清单)"
         type: boolean
         required: false
         default: true
@@ -113,7 +114,15 @@ jobs:
           PG_SYNC_RETRIES: "2"
           # 未配置仓库变量 = 严格模式: 有行/字段被丢弃(partial)也按失败返回
           PG_SYNC_ALLOW_PARTIAL: ${{ vars.PG_SYNC_ALLOW_PARTIAL }}
-          CURR_BRANCH: ${{ inputs.branch || github.ref_name }}
+          # 删除开关(默认开): 手动触发取 inputs.enableDelete(boolean 先 format 成
+          # 字符串, 避免 false 在 &&/|| 里被当作短路值); 定时触发默认 true,
+          # 仓库变量 PG_SYNC_SCHEDULED_DELETE=false 可关闭
+          PG_SYNC_ENABLE_DELETE: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.enableDelete) || (vars.PG_SYNC_SCHEDULED_DELETE || 'true') }}
+          # 删除 quote 分支源文件需本仓库 contents:write 令牌
+          GIT_COMMIT_TOKEN: ${{ secrets.GIT_COMMIT_TOKEN }}
+          # 分支必须与 checkout 的 ref 一致（quote）：定时触发时 github.ref_name
+          # 是默认分支而不是 quote，故显式回落 'quote'（否则删除会打到错分支）
+          CURR_BRANCH: ${{ inputs.branch || 'quote' }}
           PYTHONIOENCODING: utf-8
         shell: bash
         run: |

@@ -16,6 +16,9 @@
                   update 模式下 affected 小于提交行数判失败，skip 模式允许；
     容错解析   —— 单行脏数据只丢该行，不放弃整份文件（状态记为 partial）；
                   短名文件头等不可映射情形直接报错，不发写请求；
+    源文件删除 —— 默认安全模式不删；开关开启后只删「全部批次成功」的文件，
+                  failed 不删、partial 需 PG_SYNC_ALLOW_PARTIAL 放行；
+                  Contents API 先 GET sha 再 DELETE，令牌缺失 / 接口报错都按失败退出；
     退出码     —— failed → 1；partial 默认 1，PG_SYNC_ALLOW_PARTIAL=true 时 0。
 
 跑法（仅标准库，起本地假服务端，不碰真实数据与真实服务器）：
@@ -28,6 +31,7 @@ import os
 import sys
 import tempfile
 import threading
+import urllib.parse
 from contextlib import redirect_stdout
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -388,6 +392,231 @@ def test_sync_file(server, tmp):
         check("全部行不可用时抛错", "无可下发数据" in str(e), e)
 
 
+class FakeGitHub:
+    """假 GitHub Contents API：GET 取 sha，DELETE 删除并记录调用"""
+
+    def __init__(self):
+        class Handler(BaseHTTPRequestHandler):
+            exists = set()
+            calls = []
+            delete_status = 200
+
+            def log_message(self, *args):
+                pass
+
+            def reply(self, status, payload):
+                body = json.dumps(payload).encode()
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def _file_path(self):
+                path = urllib.parse.urlsplit(self.path).path
+                marker = "/contents/"
+                if marker not in path:
+                    return None
+                return urllib.parse.unquote(path.split(marker, 1)[1])
+
+            def do_GET(self):
+                path_key = self._file_path()
+                Handler.calls.append(("GET", path_key, None))
+                if path_key not in Handler.exists:
+                    self.reply(404, {"message": "Not Found"})
+                    return
+                self.reply(200, {"sha": "sha-%s" % path_key, "path": path_key})
+
+            def do_DELETE(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(length).decode()) if length else {}
+                path_key = self._file_path()
+                Handler.calls.append(("DELETE", path_key, body))
+                if Handler.delete_status != 200:
+                    self.reply(Handler.delete_status, {"message": "boom"})
+                    return
+                Handler.exists.discard(path_key)
+                self.reply(200, {"commit": {"sha": "c1"}, "content": None})
+
+        self.handler = Handler
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+        self.base = "http://127.0.0.1:%d/repos" % self.httpd.server_port
+
+    def reset(self, exists=(), delete_status=200):
+        self.handler.exists = set(exists)
+        self.handler.delete_status = delete_status
+        self.handler.calls.clear()
+
+    def stop(self):
+        self.httpd.shutdown()
+
+
+def test_repo_slug(tmp):
+    check("split_repo_slug 基本",
+          PG.split_repo_slug("ACANX/Distribution") == ("ACANX", "Distribution"))
+    check("split_repo_slug 带 .git 与斜杠",
+          PG.split_repo_slug("/ACANX/Distribution.git/") == ("ACANX", "Distribution"))
+    check("split_repo_slug 非法", PG.split_repo_slug("onlyone") == (None, None))
+    check("https remote 解析",
+          PG.split_repo_from_url("https://github.com/ACANX/Distribution.git")
+          == ("ACANX", "Distribution"))
+    check("ssh remote 解析",
+          PG.split_repo_from_url("git@github.com:ACANX/Distribution.git")
+          == ("ACANX", "Distribution"))
+    check("空 remote 解析", PG.split_repo_from_url("") == (None, None))
+
+    git_dir = os.path.join(tmp, ".git")
+    os.makedirs(git_dir, exist_ok=True)
+    with open(os.path.join(git_dir, "config"), "w", encoding="utf-8") as f:
+        f.write('[core]\n\tbare = false\n[remote "origin"]\n'
+                '\turl = git@github.com:ACANX/Distribution.git\n'
+                '\tfetch = +refs/heads/*:refs/remotes/origin/*\n')
+    os.environ.pop("GIT_REPO_SLUG", None)
+    check("从 .git/config 解析 owner/repo",
+          PG.load_owner_repo(tmp) == ("ACANX", "Distribution"),
+          PG.load_owner_repo(tmp))
+    os.environ["GIT_REPO_SLUG"] = "Other/Repo"
+    check("GIT_REPO_SLUG 优先", PG.load_owner_repo(tmp) == ("Other", "Repo"))
+    os.environ.pop("GIT_REPO_SLUG", None)
+    check("无 .git/config 返回空",
+          PG.load_owner_repo(os.path.join(tmp, "nope")) == (None, None))
+
+
+def test_delete_remote_file(gh):
+    path_key = "Archive/Finv/SecuQuote/FTMM/V5/A/G/A_G_Min_FTMM_Day_20261020.mvsv"
+    gh.reset(exists={path_key})
+    result = PG.delete_remote_file(gh.base, "ACANX", "Distribution", "quote",
+                                   path_key, "token")
+    check("删除成功", result["success"] and not result["already_gone"], result)
+    check("先 GET 取 sha 再 DELETE",
+          [call[0] for call in gh.handler.calls] == ["GET", "DELETE"],
+          gh.handler.calls)
+    body = gh.handler.calls[-1][2]
+    check("DELETE body 带 message/sha/branch",
+          body.get("sha") == "sha-%s" % path_key and body.get("branch") == "quote"
+          and "delete synced" in body.get("message", ""), body)
+
+    gh.reset(exists=())
+    result = PG.delete_remote_file(gh.base, "ACANX", "Distribution", "quote",
+                                   path_key, "token")
+    check("文件已不存在视为已处理",
+          result["success"] and result["already_gone"], result)
+
+    gh.reset(exists={path_key})
+    result = PG.delete_remote_file(gh.base, "ACANX", "Distribution", "quote",
+                                   path_key, "")
+    check("缺令牌直接失败",
+          (not result["success"]) and "GIT_COMMIT_TOKEN" in result["message"],
+          result)
+    check("缺令牌不发请求", gh.handler.calls == [], gh.handler.calls)
+
+    gh.reset(exists={path_key}, delete_status=500)
+    result = PG.delete_remote_file(gh.base, "ACANX", "Distribution", "quote",
+                                   path_key, "token")
+    check("DELETE 报错按失败返回",
+          (not result["success"]) and "HTTP 500" in result["message"], result)
+
+
+def test_main_delete(server, gh):
+    """main() 整链路：删除开关 / 删除范围（ok 才删、failed 不删、partial 需放行）"""
+    PG.RETRY_BACKOFF_SECONDS = 0.01
+    ok_path = "Archive/Finv/SecuQuote/FTMM/V5/A/G/A_G_Min_FTMM_Day_20261020.mvsv"
+    bad_path = "Archive/Finv/SecuQuote/FTMM/V5/A/B/A_B_Min_FTMM_Day_20261020.mvsv"
+    part_path = "Archive/Finv/SecuQuote/FTMM/V5/A/P/A_P_Min_FTMM_Day_20261020.mvsv"
+
+    orig_collect, orig_sync = PG.collect_mvsv_files, PG.sync_file
+    os.environ["URL_QUOTE_SYNC_BASE"] = server.base
+    os.environ["GIT_API_BASE"] = gh.base
+    os.environ["GIT_REPO_SLUG"] = "ACANX/Distribution"
+    os.environ["CURR_BRANCH"] = "quote"
+
+    def run(status_map, enable_delete=True, allow_partial=False, token="token"):
+        def fake_sync(client, root, rel_path, batch_size, column_types):
+            return {"rel_path": rel_path, "status": status_map[rel_path],
+                    "failure_digest": "d"}
+
+        PG.collect_mvsv_files = lambda root: [(path, 20261020, "x")
+                                              for path in status_map]
+        PG.sync_file = fake_sync
+        if enable_delete is None:
+            os.environ.pop("PG_SYNC_ENABLE_DELETE", None)      # 走脚本默认值
+        else:
+            os.environ["PG_SYNC_ENABLE_DELETE"] = "true" if enable_delete else "false"
+        if allow_partial:
+            os.environ["PG_SYNC_ALLOW_PARTIAL"] = "true"
+        else:
+            os.environ.pop("PG_SYNC_ALLOW_PARTIAL", None)
+        if token is None:
+            os.environ.pop("GIT_COMMIT_TOKEN", None)
+        else:
+            os.environ["GIT_COMMIT_TOKEN"] = token
+        gh.reset(exists=status_map)
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = PG.main()
+        return code, buf.getvalue(), set(gh.handler.exists)
+
+    try:
+        code, out, left = run({ok_path: "ok"}, enable_delete=False)
+        check("开关关闭：不删且退出 0",
+              code == 0 and left == {ok_path} and "删除开关关闭" in out,
+              (code, left))
+
+        code, out, left = run({ok_path: "ok"})
+        delete_bodies = [call[2] for call in gh.handler.calls if call[0] == "DELETE"]
+        check("开关开启：完整同步的文件被删除",
+              code == 0 and left == set() and "已删除源文件" in out, (code, left))
+        check("删除打到 CURR_BRANCH 指定的分支",
+              [body.get("branch") for body in delete_bodies] == ["quote"],
+              delete_bodies)
+
+        code, out, left = run({ok_path: "ok"}, enable_delete=None)
+        check("未设置开关时默认删除（默认值开启）",
+              code == 0 and left == set() and "删除开关 (enableDelete) = 开" in out,
+              (code, left))
+
+        code, out, left = run({ok_path: "ok"}, enable_delete=False)
+        check("显式 false 时只列清单不删",
+              code == 0 and left == {ok_path}, (code, left))
+
+        code, out, left = run({ok_path: "ok", bad_path: "failed"})
+        check("失败文件保留、其余删除且退出 1",
+              code == 1 and left == {bad_path}, (code, left))
+
+        code, out, left = run({part_path: "partial"})
+        check("partial 默认不删且退出 1",
+              code == 1 and left == {part_path}, (code, left))
+
+        code, out, left = run({part_path: "partial"}, allow_partial=True)
+        check("partial + ALLOW_PARTIAL：删除并退出 0",
+              code == 0 and left == set(), (code, left))
+
+        code, out, left = run({ok_path: "ok"}, token=None)
+        check("开关开启但缺令牌：退出 1 且不删",
+              code == 1 and left == {ok_path} and "GIT_COMMIT_TOKEN" in out,
+              (code, left))
+
+        gh.reset(exists={ok_path}, delete_status=500)
+        PG.collect_mvsv_files = lambda root: [(ok_path, 20261020, "x")]
+        PG.sync_file = lambda *a, **k: {"rel_path": ok_path, "status": "ok",
+                                        "failure_digest": "d"}
+        os.environ["PG_SYNC_ENABLE_DELETE"] = "true"
+        os.environ["GIT_COMMIT_TOKEN"] = "token"
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = PG.main()
+        check("删除失败：退出 1 且文件保留",
+              code == 1 and ok_path in gh.handler.exists
+              and "删除失败清单" in buf.getvalue(), code)
+    finally:
+        PG.collect_mvsv_files, PG.sync_file = orig_collect, orig_sync
+        for name in ("GIT_API_BASE", "GIT_REPO_SLUG", "GIT_COMMIT_TOKEN",
+                     "PG_SYNC_ENABLE_DELETE", "PG_SYNC_ALLOW_PARTIAL",
+                     "CURR_BRANCH"):
+            os.environ.pop(name, None)
+
+
 def test_env_and_exit_code(server):
     check("URL 缺协议补 http",
           PG.normalize_base_url("1.2.3.4:16001") == "http://1.2.3.4:16001")
@@ -410,6 +639,8 @@ def test_env_and_exit_code(server):
     def run_main(status, allow_partial):
         os.environ["URL_QUOTE_SYNC_BASE"] = server.base
         os.environ.pop("PG_SYNC_ALLOW_PARTIAL", None)
+        # 本用例只验证退出码，显式关闭删除（脚本默认值是开）
+        os.environ["PG_SYNC_ENABLE_DELETE"] = "false"
         if allow_partial:
             os.environ["PG_SYNC_ALLOW_PARTIAL"] = "true"
         orig_collect = PG.collect_mvsv_files
@@ -425,6 +656,7 @@ def test_env_and_exit_code(server):
             PG.collect_mvsv_files = orig_collect
             PG.sync_file = orig_sync
             os.environ.pop("PG_SYNC_ALLOW_PARTIAL", None)
+            os.environ.pop("PG_SYNC_ENABLE_DELETE", None)
 
     check("ok -> 退出码 0", run_main("ok", False)[0] == 0)
     check("partial -> 退出码 1（默认严格）", run_main("partial", False)[0] == 1)
@@ -437,14 +669,19 @@ def test_env_and_exit_code(server):
 def main():
     PG._ensure_console_utf8()
     server = FakeServer()
+    gh = FakeGitHub()
     tmp = tempfile.mkdtemp()
     try:
         test_sanitize()
         test_client(server)
         test_sync_file(server, tmp)
+        test_repo_slug(tmp)
+        test_delete_remote_file(gh)
+        test_main_delete(server, gh)
         test_env_and_exit_code(server)
     finally:
         server.stop()
+        gh.stop()
     print("\n%s" % ("全部通过" if not FAILS else "失败 %d 项：%s" % (len(FAILS), FAILS)))
     return 1 if FAILS else 0
 
