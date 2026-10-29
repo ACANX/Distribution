@@ -45,8 +45,13 @@ cdeu.finv_quote_secu_kline_min，作为 Supabase 入库数据的镜像副本。
     - 两条链路的读取口径（目录、文件名排序、fileLimit 语义）必须保持一致，
       本脚本对数据行采用容错解析 parse_mvsv_rows（见 §三），
       修改任一侧的目录 / 列映射时请同步另一侧；
+    - 日志分块：每个文件执行前后各打印一行 `===== [i/N] 开始/结束：... =====`
+      （块头带序号与路径，块尾带序号、结果与耗时），长日志里可直接看出每个文件
+      的批次循环边界，不会与相邻文件的 ✅ / ❌ / ⚠️ 混在一起；
     - 源文件删除：**默认开启**；单个文件全部批次成功后删除 quote 分支上的该源文件
-      （需 GIT_COMMIT_TOKEN，缺失即退出 1）。删除策略：
+      （需 GIT_COMMIT_TOKEN，缺失即退出 1）。删除相关清单（待删除 / 删除成功 /
+      远端已不存在 / 删除失败）一律**完整逐条打印，不折叠成「其余 N 个同上」**，
+      便于与远端实际剩余文件逐条对账。删除策略：
           1) 优先 **Git Data API 批量删除**：PG_SYNC_DELETE_BATCH_SIZE 个文件压成 1 条
              commit（5 次调用 / 批，对比逐文件的 2 次/文件 + 1 commit/文件）；
           2) 批量失败的文件（该批报错 / 非快进重试耗尽 / 端点或权限不可用）
@@ -1013,14 +1018,21 @@ def delete_remote_file(api_base, owner, repo, branch, path_key, token,
     return fail(reason)
 
 
-def log_path_list(title, paths, limit=20):
-    """打印相对路径清单（超过 limit 只给总数和首几项，避免刷屏）"""
+def log_path_list(title, paths, limit=None):
+    """打印相对路径清单
+
+    默认 limit=None：**完整逐条输出，不省略、不折叠**。删除相关清单
+    （待删除 / 删除成功 / 远端已不存在 / 删除失败）都必须可逐条核对，
+    省略会让日志无法与远端实际剩余文件对账。
+    传入正整数时才截断为「前 limit 条 + 其余 N 个同上」。
+    """
     if not paths:
         return
     print("%s（%d 个）：" % (title, len(paths)))
-    for rel_path in paths[:limit]:
+    shown = paths if limit is None else paths[:limit]
+    for rel_path in shown:
         print("    - %s" % rel_path)
-    if len(paths) > limit:
+    if limit is not None and len(paths) > limit:
         print("    - ……其余 %d 个同上" % (len(paths) - limit))
 
 
@@ -1489,25 +1501,38 @@ def main():
 
     failed_files, partial_files = [], []
     ok_files, partial_paths = [], []
-    for rel_path, _date, _code in picked:
+    total_picked = len(picked)
+    # 每个文件一个显式块：块头给序号 + 路径，块尾给序号 + 状态 + 耗时。
+    # 这样在长日志里能一眼看出「哪几行属于同一个文件」「循环从哪开始、到哪结束」，
+    # 尤其多个 ❌ / ⚠️ 混排时不会串到相邻文件上（用 ===== 与上方「本次处理清单」区分）。
+    for idx, (rel_path, _date, _code) in enumerate(picked, 1):
+        print("===== [%d/%d] 开始：%s ====="
+              % (idx, total_picked, rel_path))
+        started = time_module.monotonic()
         try:
             outcome = sync_file(client, root, rel_path, batch_size, column_types)
         except Exception as e:
             # 文件头不可解析 / 无可下发数据：没发过写请求，源文件必须保留
             print("❌ 文件 %s 解析/同步过程异常：%s" % (rel_path, e))
             failed_files.append("%s：%s" % (rel_path, e))
-            continue
-        if outcome["status"] == "failed":
-            print("🔒 %s 同步失败（批次未全部成功）：%s"
-                  % (rel_path, outcome["failure_digest"]))
-            failed_files.append("%s：%s" % (rel_path, outcome["failure_digest"]))
-        elif outcome["status"] == "partial":
-            print("⚠️ %s 部分同步（有行/字段被丢弃）：%s"
-                  % (rel_path, outcome["failure_digest"]))
-            partial_files.append("%s：%s" % (rel_path, outcome["failure_digest"]))
-            partial_paths.append(rel_path)
+            mark = "异常（源文件保留）"
         else:
-            ok_files.append(rel_path)
+            if outcome["status"] == "failed":
+                print("🔒 %s 同步失败（批次未全部成功）：%s"
+                      % (rel_path, outcome["failure_digest"]))
+                failed_files.append("%s：%s" % (rel_path, outcome["failure_digest"]))
+                mark = "失败（源文件保留）"
+            elif outcome["status"] == "partial":
+                print("⚠️ %s 部分同步（有行/字段被丢弃）：%s"
+                      % (rel_path, outcome["failure_digest"]))
+                partial_files.append("%s：%s" % (rel_path, outcome["failure_digest"]))
+                partial_paths.append(rel_path)
+                mark = "部分同步（存在被丢弃的行/字段）"
+            else:
+                ok_files.append(rel_path)
+                mark = "成功（完整同步）"
+        print("===== [%d/%d] 结束：%s，耗时 %.1fs ====="
+              % (idx, total_picked, mark, time_module.monotonic() - started))
 
     synced = len(picked) - len(failed_files) - len(partial_files)
     print("======== 自建行情服务同步结束（Task16 / FTMM V5 / PG）========")
@@ -1576,7 +1601,7 @@ def main():
               "远端已不存在 %d 份，删除失败 %d 份"
               % (len(bulk_deleted), len(bulk_commits), len(deleted),
                  len(already_gone), len(delete_failed)))
-        # 除逐条日志外再给一份可核对的清单（超长时只给前 20 条 + 总数）
+        # 除逐条日志外再给一份可核对的清单（完整输出，不省略）
         log_path_list("删除成功清单（批量）", bulk_deleted)
         log_path_list("删除成功清单（兜底逐文件）", deleted)
         log_path_list("远端已不存在清单（无需再删）", already_gone)
