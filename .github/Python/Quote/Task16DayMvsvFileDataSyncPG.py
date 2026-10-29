@@ -53,8 +53,9 @@ cdeu.finv_quote_secu_kline_min，作为 Supabase 入库数据的镜像副本。
       （需 GIT_COMMIT_TOKEN，缺失即退出 1）。删除相关清单（待删除 / 删除成功 /
       远端已不存在 / 删除失败）一律**完整逐条打印，不折叠成「其余 N 个同上」**，
       便于与远端实际剩余文件逐条对账。删除策略：
-          1) 优先 **Git Data API 批量删除**：PG_SYNC_DELETE_BATCH_SIZE 个文件压成 1 条
-             commit（5 次调用 / 批，对比逐文件的 2 次/文件 + 1 commit/文件）；
+          1) 优先 **Git Data API 批量删除**：PG_SYNC_DELETE_BATCH_SIZE 个文件（默认 100）
+             压成 1 条 commit，各批**相互隔离**：某批失败只回退该批去逐文件兜底，
+             不影响后续批次继续按批删除（除非批量方案整体不可用或全部批次都失败）；
           2) 批量失败的文件（该批报错 / 非快进重试耗尽 / 端点或权限不可用）
              自动回退到**逐文件 Contents API 兜底**，已有源文件不会被漏删；
       PG_SYNC_ENABLE_DELETE=false/0 时降级为安全模式，只打印待删除清单；
@@ -108,7 +109,8 @@ cdeu.finv_quote_secu_kline_min，作为 Supabase 入库数据的镜像副本。
                           （不调删除接口，只打印「待删除」清单，队列不会前进）
     PG_SYNC_DELETE_BULK    "false"/"0" 时不用批量，直接逐文件删除
                           （默认 true：优先批量，失败再兜底）
-    PG_SYNC_DELETE_BATCH_SIZE 批量删除时每个 commit 的文件数（默认 500，上限 1000）
+    PG_SYNC_DELETE_BATCH_SIZE 批量删除时每个 commit 的文件数（默认 100，上限 1000）；
+                          600 个待删文件 → 6 批 × 100，每批 1 条 commit
     GIT_COMMIT_TOKEN      删除用的 GitHub 令牌（需本仓库 contents:write）；
                           开启删除但缺失即按失败退出
     GIT_REPO_SLUG         可选，"owner/repo" 覆盖（默认从 .git/config 的 origin 解析）
@@ -206,7 +208,7 @@ DELETE_COMMIT_MESSAGE = "[Task16PG] delete synced %s"
 REMOTE_FILE_ABSENT = "absent"                  # github_file_sha 的“文件不存在”哨兵
 
 # 批量删除（Git Data API）：优先一次 commit 删一批，失败的文件回退逐文件 Contents API
-DEFAULT_DELETE_BATCH_SIZE = 500                # 每个 commit 删除多少个文件
+DEFAULT_DELETE_BATCH_SIZE = 100                # 每个 commit 删除多少个文件（默认 100）
 MAX_DELETE_BATCH_SIZE = 1000                   # POST /git/trees 条目数硬上限（保守值）
 DEFAULT_BULK_RETRIES = 3                       # 非快进（分支被推进）时的重试次数
 BULK_RETRY_BACKOFF_SECONDS = 2.0
@@ -1042,12 +1044,20 @@ def log_path_list(title, paths, limit=None):
 # ---------------------------------------------------------------------------
 #
 # 优先方案。逐文件 Contents API 删除是兜底方案（见 delete_remote_file）。
-# 一趟删除的调用数对比（500 文件）：
+# 一趟删除的调用数对比（每批 100 文件）：
 #   批量：GET ref + GET commit + POST tree + POST commit + PATCH ref = 5 次 / 1 条 commit
-#   兜底：每文件 GET sha + DELETE = 1000 次 / 500 条 commit
+#   兜底：每文件 GET sha + DELETE = 200 次 / 100 条 commit
 
 class BulkDeleteError(Exception):
-    """Git Data API 批量删除失败（该批路径回退逐文件删除）"""
+    """Git Data API 批量删除失败（该批路径回退逐文件删除，后续批照常按批删除）"""
+
+
+class BulkDeleteUnavailable(BulkDeleteError):
+    """批量删除方案整体不可用（认证/权限不足、端点不存在、tree 截断）
+
+    与普通批次失败区分：普通失败只回退该批，后续批次继续走批量；
+    本异常表示再试批量也没意义，剩余批次直接走逐文件兜底。
+    """
 
 
 class NonFastForwardError(BulkDeleteError):
@@ -1071,12 +1081,19 @@ def github_api_call(api_base, method, api_path, token, body, timeout):
 
 def _github_json(api_base, method, api_path, token, timeout, body=None,
                  expect=(200, 201)):
-    """调用并解 JSON 对象；状态码不在 expect 内则抛 BulkDeleteError"""
+    """调用并解 JSON 对象；状态码不在 expect 内则抛错
+
+    401/403/404 归为 BulkDeleteUnavailable（令牌无效/权限不足/端点不存在），
+    其余状态码归为普通 BulkDeleteError（只影响当前批次）。
+    """
     status, text = github_api_call(api_base, method, api_path, token, body,
                                    timeout)
     if status not in expect:
-        raise BulkDeleteError("%s %s 失败：HTTP %s：%s"
-                              % (method, api_path, status, snippet(text)))
+        message = "%s %s 失败：HTTP %s：%s" % (method, api_path, status,
+                                              snippet(text))
+        if status in (401, 403, 404):
+            raise BulkDeleteUnavailable(message)
+        raise BulkDeleteError(message)
     try:
         payload = json.loads(text)
     except ValueError:
@@ -1122,7 +1139,8 @@ def github_tree_paths(api_base, owner, repo, tree_sha, token, timeout):
                                 "/git/trees/%s?recursive=1" % tree_sha)
     payload = _github_json(api_base, "GET", api_path, token, timeout)
     if payload.get("truncated"):
-        raise BulkDeleteError("tree %s 响应被截断（truncated=true）" % tree_sha)
+        raise BulkDeleteUnavailable("tree %s 响应被截断（truncated=true），"
+                                    "无法可靠判断文件是否存在" % tree_sha)
     return {entry.get("path") for entry in payload.get("tree") or []
             if entry.get("type") == "blob"}
 
@@ -1165,6 +1183,9 @@ def github_update_branch(api_base, owner, repo, branch, commit_sha, token, timeo
     if status == 422:
         raise NonFastForwardError("PATCH ref 被拒（分支已前进）：HTTP 422：%s"
                                   % snippet(text))
+    if status in (401, 403, 404):
+        raise BulkDeleteUnavailable("PATCH ref 失败：HTTP %s：%s"
+                                    % (status, snippet(text)))
     raise BulkDeleteError("PATCH ref 失败：HTTP %s：%s" % (status, snippet(text)))
 
 
@@ -1176,21 +1197,28 @@ def delete_files_in_one_commit(api_base, owner, repo, branch, paths, token,
                                message=None):
     """优先方案：用 Git Data API 把一批文件压成一次 commit 删除
 
-    每批独立处理：某批失败只把该批路径放进 fallback（交给调用方逐文件兜底），
-    不中断后续批次；若判定「批量方案不可用」（权限 / 端点不支持 / tree 截断），
-    后续批次直接进 fallback，避免每批都白试一次。
+    每批独立处理，批间完全隔离：
+      - 某批失败 → 只把该批路径放进 fallback（交给调用方逐文件兜底），
+        **不中断后续批次**，下一批照常按批删除；
+      - 只有当批量方案被判定整体不可用（BulkDeleteUnavailable：令牌权限不足 /
+        端点不存在 / tree 截断）时，剩余批次才直接进 fallback，不再每批白试；
+      - 即便所有批次都失败，调用方也会逐文件兑底，不会漏删。
 
+    :param batch_size: 每批（即每个 commit）删除的文件数，默认 100
     :param verify: True 时先拉 recursive tree，跳过不存在的路径（不产生空 commit）
     :return: dict {"deleted": [...], "missing": [...], "commits": [...],
-                   "fallback": [...], "fatal": str|None}
+                   "fallback": [...], "fatal": str|None,
+                   "failed_batches": int, "total_batches": int}
     """
     targets = list(dict.fromkeys(paths))       # 去重保序
     result = {"deleted": [], "missing": [], "commits": [],
-              "fallback": [], "fatal": None}
+              "fallback": [], "fatal": None,
+              "failed_batches": 0, "total_batches": 0}
     if not targets:
         return result
 
     total_batches = (len(targets) + batch_size - 1) // batch_size
+    result["total_batches"] = total_batches
     for index, chunk in enumerate(chunks(targets, batch_size), 1):
         if result["fatal"]:
             result["fallback"].extend(chunk)
@@ -1236,12 +1264,25 @@ def delete_files_in_one_commit(api_base, owner, repo, branch, paths, token,
                           % (error, attempt, retries, wait))
                     time_module.sleep(wait)
                     continue
-            except BulkDeleteError as error:
-                print("❌ 批量删除第 %d/%d 批失败：%s" % (index, total_batches, error))
-                print("   该批 %d 个文件回退逐文件删除" % len(chunk))
+            except BulkDeleteUnavailable as error:
+                # 批量方案整体不可用：本批及剩余批次全部改走逐文件兜底
+                result["failed_batches"] += 1
+                print("❌ 批量删除第 %d/%d 批失败（批量方案不可用）：%s"
+                      % (index, total_batches, error))
+                print("   剩余 %d 批全部改为逐文件删除（不漏删，只多耗接口次数）"
+                      % (total_batches - index + 1))
                 result["fallback"].extend(chunk)
                 if not result["fatal"]:
                     result["fatal"] = "%s" % error
+                break
+            except BulkDeleteError as error:
+                # 单批失败：只回退该批，后续批次继续按批删除
+                result["failed_batches"] += 1
+                print("❌ 批量删除第 %d/%d 批失败：%s"
+                      % (index, total_batches, error))
+                print("   该批 %d 个文件回退逐文件删除；后续批次继续按批删除"
+                      % len(chunk))
+                result["fallback"].extend(chunk)
                 break
 
             print("🗑️ 批量删除成功：commit=%s，删除 %d 个文件（尝试 %d 次）"
@@ -1453,9 +1494,10 @@ def main():
     allow_partial = env_bool("PG_SYNC_ALLOW_PARTIAL", False)
     enable_delete = env_bool("PG_SYNC_ENABLE_DELETE", True)
     delete_bulk = env_bool("PG_SYNC_DELETE_BULK", DEFAULT_DELETE_BULK)
-    delete_batch_size = min(env_int("PG_SYNC_DELETE_BATCH_SIZE",
-                                    DEFAULT_DELETE_BATCH_SIZE),
-                            MAX_DELETE_BATCH_SIZE)
+    # 批大小可配（默认 100，至少 1，上限 1000）：600 个文件 → 6 批 × 1 条 commit
+    delete_batch_size = max(1, min(env_int("PG_SYNC_DELETE_BATCH_SIZE",
+                                           DEFAULT_DELETE_BATCH_SIZE),
+                                   MAX_DELETE_BATCH_SIZE))
 
     print("======== 自建行情服务同步开始（Task16 / FTMM V5 / PG）========")
     print("分支 (branch) = %s" % branch)
@@ -1585,10 +1627,14 @@ def main():
                 already_gone.extend(bulk["missing"])
                 pending = bulk["fallback"]
                 if bulk["fatal"]:
-                    print("⚠️ 批量删除不可用（%s），改用逐文件删除" % bulk["fatal"])
-                if bulk_deleted:
-                    print("批量删除合计：%d 个文件，%d 条 commit"
-                          % (len(bulk_deleted), len(bulk_commits)))
+                    print("⚠️ 批量删除不可用（%s），剩余批次改用逐文件删除"
+                          % bulk["fatal"])
+                ok_batches = bulk["total_batches"] - bulk["failed_batches"]
+                print("批量删除合计：成功 %d/%d 批（%d 个文件，%d 条 commit）；"
+                      "失败 %d 批 → %d 个文件回退逐文件删除"
+                      % (ok_batches, bulk["total_batches"], len(bulk_deleted),
+                         len(bulk_commits), bulk["failed_batches"],
+                         len(pending)))
 
             # 兜底：失败的（或未启用批量时的全部）逐文件 Contents API 删除
             if pending:

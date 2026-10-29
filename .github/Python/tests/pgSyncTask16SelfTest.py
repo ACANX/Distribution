@@ -657,7 +657,8 @@ def test_main_delete(server, gh):
     os.environ["CURR_BRANCH"] = "quote"
 
     def run(status_map, enable_delete=True, allow_partial=False, token="token",
-            bulk=True, bulk_status=200, delete_status=200, conflict_times=0):
+            bulk=True, bulk_status=200, delete_status=200, conflict_times=0,
+            delete_batch_size=None):
         def fake_sync(client, root, rel_path, batch_size, column_types,
                      show_path=True):
             return {"rel_path": rel_path, "status": status_map[rel_path],
@@ -671,7 +672,10 @@ def test_main_delete(server, gh):
         else:
             os.environ["PG_SYNC_ENABLE_DELETE"] = "true" if enable_delete else "false"
         os.environ["PG_SYNC_DELETE_BULK"] = "true" if bulk else "false"
-        os.environ.pop("PG_SYNC_DELETE_BATCH_SIZE", None)
+        if delete_batch_size is None:
+            os.environ.pop("PG_SYNC_DELETE_BATCH_SIZE", None)   # 走默认 100
+        else:
+            os.environ["PG_SYNC_DELETE_BATCH_SIZE"] = str(delete_batch_size)
         if allow_partial:
             os.environ["PG_SYNC_ALLOW_PARTIAL"] = "true"
         else:
@@ -712,6 +716,54 @@ def test_main_delete(server, gh):
               "删除合计：批量删除 1 份（1 条 commit）" in out
               and "删除成功清单（批量）（1 个）" in out and ok_path in out,
               out[-500:])
+
+        # 分批删除：默认每批 100 个 → 600 个文件 6 批；单批失败只回退该批
+        many = ["Archive/Finv/SecuQuote/FTMM/V5/A/B%d/A_B%d_Min_FTMM_Day_20261020.mvsv"
+                % (i, i) for i in range(600)]
+        orig_tree = PG.github_create_deletion_tree
+        state = {"calls": 0}
+
+        def flaky_tree(*args, **kwargs):
+            state["calls"] += 1
+            if state["calls"] == 2:
+                raise PG.BulkDeleteError("模拟第 2 批 trees 写入失败")
+            return orig_tree(*args, **kwargs)
+
+        os.environ["PG_SYNC_FILE_LIMIT"] = "600"   # 否则只处理默认前 50 个
+        os.environ.pop("PG_SYNC_DELETE_BATCH_SIZE", None)   # 走默认 100
+        PG.github_create_deletion_tree = flaky_tree
+        try:
+            code, out, left = run({path: "ok" for path in many})
+        finally:
+            PG.github_create_deletion_tree = orig_tree
+        check("600 个文件按默认 100/批 = 6 批，单批失败不中断后续批次",
+              code == 0 and left == set()
+              and len(gh.handler.commits) == 5
+              and len(gh.calls_of("DELETE")) == 100
+              and "批量删除合计：成功 5/6 批" in out
+              and "该批 100 个文件回退逐文件删除；后续批次继续按批删除" in out,
+              (code, len(gh.handler.commits), len(gh.calls_of("DELETE"))))
+
+        # 全部批次都失败 → 全部回退逐文件，仍然删干净（不漏删）
+        def always_fail_tree(*args, **kwargs):
+            raise PG.BulkDeleteError("模拟批量写入全失败")
+
+        small = many[:20]
+        os.environ["PG_SYNC_FILE_LIMIT"] = "20"
+        PG.github_create_deletion_tree = always_fail_tree
+        try:
+            code, out, left = run({path: "ok" for path in small},
+                                  delete_batch_size=10)
+        finally:
+            PG.github_create_deletion_tree = orig_tree
+            os.environ.pop("PG_SYNC_FILE_LIMIT", None)
+            os.environ.pop("PG_SYNC_DELETE_BATCH_SIZE", None)
+        check("全部批次失败时逐文件兜底仍删干净",
+              code == 0 and left == set()
+              and len(gh.handler.commits) == 0
+              and len(gh.calls_of("DELETE")) == 20
+              and "批量删除合计：成功 0/2 批" in out,
+              (code, len(gh.handler.commits), len(gh.calls_of("DELETE"))))
 
         code, out, left = run({ok_path: "ok"}, enable_delete=None)
         check("未设置开关时默认删除（默认值开启）",
@@ -767,7 +819,7 @@ def test_main_delete(server, gh):
         for name in ("GIT_API_BASE", "GIT_REPO_SLUG", "GIT_COMMIT_TOKEN",
                      "PG_SYNC_ENABLE_DELETE", "PG_SYNC_DELETE_BULK",
                      "PG_SYNC_DELETE_BATCH_SIZE", "PG_SYNC_ALLOW_PARTIAL",
-                     "CURR_BRANCH"):
+                     "PG_SYNC_FILE_LIMIT", "CURR_BRANCH"):
             os.environ.pop(name, None)
 
 

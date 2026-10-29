@@ -21,7 +21,8 @@ Git Data API 可以把「删除 N 个文件」压成一次 commit：
     4) POST /repos/{o}/{r}/git/commits                 用新 tree + parent 建 commit
     5) PATCH /repos/{o}/{r}/git/refs/heads/{branch}    把 ref 快进到新 commit
 
-于是 500 份文件 = 5 次调用（每批 1 条 commit），且原子：要么这批全删，要么一个不删。
+于是 100 份文件（默认每批 100）= 5 次调用（每批 1 条 commit），且原子：要么这批全删，要么一个不删。
+各批相互独立：某一批失败只跳过该批，不影响后续批次继续删除。
 删除不存在的路径不需要先探测——`sha: null` 对不存在的条目是无害的（会被忽略），
 只有 --verify 时才会先拉一次 recursive tree 把不存在的路径挑出来跳过。
 
@@ -75,7 +76,7 @@ quote 分支常被采集任务写入，从「取 ref」到「PATCH ref」之间�
                        是否先拉 recursive tree 过滤不存在的路径（默认 verify）。
                        注意：超大仓库的 tree 可能被 GitHub 截断（truncated=true），
                        此时本工具会报错并提示改用 --no-verify，不会静默误删。
-    --batch-size N     每批（= 每 commit）删除的路径数，默认 500，硬上限 1000
+    --batch-size N     每批（= 每 commit）删除的路径数，默认 100，硬上限 1000
 
 五、退出码
 ----------------------------------------------------------------------------------------
@@ -104,7 +105,7 @@ DEFAULT_API_BASE = "https://api.github.com"
 USER_AGENT = ("Distribution-GitDataBatchDelete/1.0 "
               "(+https://github.com/ACANX/Distribution)")
 
-DEFAULT_BATCH_SIZE = 500
+DEFAULT_BATCH_SIZE = 100                   # 默认每批（= 每 commit）删除的路径数
 MAX_BATCH_SIZE = 1000                     # 单次 POST /git/trees 条目数硬上限（保守值）
 DEFAULT_MAX_DELETE = 1000                 # 单次运行删除路径数上限
 DEFAULT_TIMEOUT = 30
@@ -398,82 +399,99 @@ def delete_paths_in_one_commit(deleter, paths, message=None,
                                dry_run=False):
     """删除 paths：每 batch_size 条路径产生一个 commit
 
+    各批**相互独立**：某批失败（接口报错 / 非快进重试耗尽 / tree 截断）只记入
+    failed_batches 并继续处理后续批次，不会因为前面一批失败就放弃后面的；
+    只有全部批次都失败时才算整体失败（由调用方根据 failed_batches 定退出码）。
+
     :param deleter: GitDataDeleter
     :param paths: 仓库内相对路径列表（内部会去重）
     :param message: commit 说明；缺省按删除数量生成
-    :param batch_size: 每个 commit 删除多少条（1..MAX_BATCH_SIZE）
+    :param batch_size: 每个 commit 删除多少条（1..MAX_BATCH_SIZE，默认 100）
     :param verify: True 时先拉 recursive tree，跳过不存在的路径（不产生空 commit）
     :param dry_run: True 时只探测与打印，不发 POST / PATCH
-    :return: dict {"requested", "deleted", "missing", "batches", "commits"}
-    :raises GitHubError: 调用失败 / 重试耗尽
+    :return: dict {"requested", "deleted", "missing", "batches", "commits",
+                   "failed_batches": [{"batch", "paths", "error"}]}
     """
     targets = dedupe(paths)
     result = {"requested": len(targets), "deleted": [], "missing": [],
-              "batches": [], "commits": []}
+              "batches": [], "commits": [], "failed_batches": [],
+              "total_batches": 0}
     if not targets:
         print("没有待删除路径，无事可做")
         return result
 
     total_batches = (len(targets) + batch_size - 1) // batch_size
+    result["total_batches"] = total_batches
     for index, chunk in enumerate(chunks(targets, batch_size), 1):
         print("-------- 第 %d/%d 批：%d 个路径 --------"
               % (index, total_batches, len(chunk)))
-        attempt = 0
-        while True:
-            attempt += 1
-            head = deleter.get_head_commit()
-            tree_sha = deleter.get_commit_tree(head)
-            batch_paths = chunk
-            missing = []
-            if verify:
-                existing = deleter.list_tree_paths(tree_sha)
-                batch_paths = [path for path in chunk if path in existing]
-                missing = [path for path in chunk if path not in existing]
-                if missing:
-                    print("⚠️ 本批有 %d 个路径在 %s@%s 上不存在，跳过（不产生空 commit）"
-                          % (len(missing), deleter.repo, deleter.branch))
-                    log_path_list("不存在的路径", missing)
-            if not batch_paths:
-                result["missing"].extend(missing)
-                break
+        try:
+            attempt = 0
+            while True:
+                attempt += 1
+                head = deleter.get_head_commit()
+                tree_sha = deleter.get_commit_tree(head)
+                batch_paths = chunk
+                missing = []
+                if verify:
+                    existing = deleter.list_tree_paths(tree_sha)
+                    batch_paths = [path for path in chunk if path in existing]
+                    missing = [path for path in chunk if path not in existing]
+                    if missing:
+                        print("⚠️ 本批有 %d 个路径在 %s@%s 上不存在，跳过（不产生空 commit）"
+                              % (len(missing), deleter.repo, deleter.branch))
+                        log_path_list("不存在的路径", missing)
+                if not batch_paths:
+                    result["missing"].extend(missing)
+                    break
 
-            commit_message = message or ("[BatchDelete] delete %d files"
-                                         % len(batch_paths))
-            if dry_run:
-                print("🧪 [dry-run] 将基于 commit=%s tree=%s 删除 %d 个文件"
-                      "（不发写请求）：" % (head[:8], tree_sha[:8], len(batch_paths)))
-                log_path_list("待删除路径", batch_paths)
+                commit_message = message or ("[BatchDelete] delete %d files"
+                                             % len(batch_paths))
+                if dry_run:
+                    print("🧪 [dry-run] 将基于 commit=%s tree=%s 删除 %d 个文件"
+                          "（不发写请求）：" % (head[:8], tree_sha[:8],
+                                              len(batch_paths)))
+                    log_path_list("待删除路径", batch_paths)
+                    result["deleted"].extend(batch_paths)
+                    result["missing"].extend(missing)
+                    result["batches"].append({"attempts": attempt,
+                                              "deleted": len(batch_paths),
+                                              "tree": None, "commit": None,
+                                              "dry_run": True})
+                    break
+
+                new_tree = deleter.create_tree(tree_sha, batch_paths)
+                new_commit = deleter.create_commit(new_tree, head, commit_message)
+                try:
+                    deleter.update_branch(new_commit)
+                except NonFastForwardError as error:
+                    if attempt > deleter.retries:
+                        raise GitHubError(
+                            "非快进冲突重试 %d 次仍失败：%s" % (deleter.retries, error))
+                    wait = RETRY_BACKOFF_SECONDS * attempt
+                    print("⚠️ %s；重取 ref 后重试（第 %d/%d 次，等待 %.1fs）"
+                          % (error, attempt, deleter.retries, wait))
+                    time.sleep(wait)
+                    continue
+
+                print("🗑️ 已提交删除：commit=%s，删除 %d 个文件（tree=%s，尝试 %d 次）"
+                      % (new_commit[:8], len(batch_paths), new_tree[:8], attempt))
                 result["deleted"].extend(batch_paths)
                 result["missing"].extend(missing)
                 result["batches"].append({"attempts": attempt,
                                           "deleted": len(batch_paths),
-                                          "tree": None, "commit": None,
-                                          "dry_run": True})
+                                          "tree": new_tree, "commit": new_commit})
+                result["commits"].append(new_commit)
                 break
-
-            new_tree = deleter.create_tree(tree_sha, batch_paths)
-            new_commit = deleter.create_commit(new_tree, head, commit_message)
-            try:
-                deleter.update_branch(new_commit)
-            except NonFastForwardError as error:
-                if attempt > deleter.retries:
-                    raise GitHubError(
-                        "非快进冲突重试 %d 次仍失败：%s" % (deleter.retries, error))
-                wait = RETRY_BACKOFF_SECONDS * attempt
-                print("⚠️ %s；重取 ref 后重试（第 %d/%d 次，等待 %.1fs）"
-                      % (error, attempt, deleter.retries, wait))
-                time.sleep(wait)
-                continue
-
-            print("🗑️ 已提交删除：commit=%s，删除 %d 个文件（tree=%s，尝试 %d 次）"
-                  % (new_commit[:8], len(batch_paths), new_tree[:8], attempt))
-            result["deleted"].extend(batch_paths)
-            result["missing"].extend(missing)
-            result["batches"].append({"attempts": attempt,
-                                      "deleted": len(batch_paths),
-                                      "tree": new_tree, "commit": new_commit})
-            result["commits"].append(new_commit)
-            break
+        except GitHubError as error:
+            # 单批失败不影响后续批次：记下来继续下一批
+            print("❌ 第 %d/%d 批失败：%s" % (index, total_batches, error))
+            print("   %d 个路径未删除，继续处理后续批次（稍后可单独重跑这一批）"
+                  % len(chunk))
+            result["failed_batches"].append({"batch": index,
+                                             "paths": list(chunk),
+                                             "error": "%s" % error})
+            continue
     return result
 
 
@@ -485,6 +503,16 @@ def print_summary(result, dry_run=False):
              "计划删除" if dry_run else "已删除",
              len(result["deleted"]), len(result["missing"]),
              0 if dry_run else len(result["commits"])))
+    failed_batches = result.get("failed_batches") or []
+    if failed_batches:
+        total_batches = result.get("total_batches") or (
+            len(result["batches"]) + len(failed_batches))
+        print("失败批次：%d/%d 批，未删除 %d 个路径"
+              % (len(failed_batches), total_batches,
+                 sum(len(item["paths"]) for item in failed_batches)))
+        for item in failed_batches:
+            print("    第 %d 批（%d 个路径）：%s"
+                  % (item["batch"], len(item["paths"]), item["error"]))
     if dry_run:
         log_path_list("计划删除清单（dry-run，未执行）", result["deleted"])
         return
@@ -495,6 +523,9 @@ def print_summary(result, dry_run=False):
     if result["commits"]:
         print("提示：本次共 %d 条 commit，可在分支历史里按 commit message 追溯"
               % len(result["commits"]))
+    for item in failed_batches:
+        log_path_list("第 %d 批未删除清单（修复后重跑即可）" % item["batch"],
+                      item["paths"])
 
 
 # ---------------------------------------------------------------------------
@@ -526,6 +557,8 @@ def run_self_test():
         calls = []                 # [(method, path)]
         conflict_times = 0         # >0 时 PATCH 返回 422（模拟分支前进）
         truncate_tree = False
+        fail_tree_at = 0           # 第 N 次 POST /git/trees 返回 500；-1 = 每次都失败
+        tree_posts = 0             # POST /git/trees 计数
 
         def log_message(self, *args):
             pass
@@ -574,6 +607,11 @@ def run_self_test():
             body = self._body()
             Handler.calls.append(("POST", path))
             if path.endswith("/git/trees"):
+                Handler.tree_posts += 1
+                if Handler.fail_tree_at == -1 or \
+                        Handler.tree_posts == Handler.fail_tree_at:
+                    self.reply(500, {"message": "tree boom"})
+                    return
                 Handler.tree_sha = "tree-%d" % (len(Handler.calls))
                 # 真 GitHub：改 tree 不影响分支内容，只有 PATCH ref 成功才落地；
                 # 假服务用 pending 模拟这个时序（否则重试用例会误判为已删除）
@@ -613,7 +651,7 @@ def run_self_test():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     api_base = "http://127.0.0.1:%d" % server.server_port
 
-    def reset(files, conflict_times=0, truncate_tree=False):
+    def reset(files, conflict_times=0, truncate_tree=False, fail_tree_at=0):
         Handler.files = dict(files)
         Handler.pending = {}
         Handler.commit_sha = "commit-0"
@@ -622,6 +660,8 @@ def run_self_test():
         Handler.calls = []
         Handler.conflict_times = conflict_times
         Handler.truncate_tree = truncate_tree
+        Handler.fail_tree_at = fail_tree_at
+        Handler.tree_posts = 0
 
     def new_deleter(retries=DEFAULT_RETRIES):
         return GitDataDeleter("ACANX", "Distribution", "quote", "token",
@@ -665,6 +705,38 @@ def run_self_test():
         check("分批删除：3 批 = 3 条 commit",
               len(result["commits"]) == 3 and Handler.files == {}, result["commits"])
 
+        # 3b) 默认批大小 = 100：600 个路径 → 6 批（只看分批数，用 dry-run 免写）
+        check("默认每批 100 个路径", DEFAULT_BATCH_SIZE == 100, DEFAULT_BATCH_SIZE)
+        reset({"b%d.mvsv" % i: "s%d" % i for i in range(600)})
+        result = delete_paths_in_one_commit(
+            new_deleter(), ["b%d.mvsv" % i for i in range(600)], dry_run=True)
+        check("600 个路径按默认批大小分成 6 批",
+              result["total_batches"] == 6
+              and len(result["batches"]) == 6, result["total_batches"])
+
+        # 3c) 单批失败不影响后续批次：第 1 批 POST trees 失败，第 2 批照常成功
+        reset({"g%d.mvsv" % i: "s%d" % i for i in range(6)}, fail_tree_at=1)
+        result = delete_paths_in_one_commit(
+            new_deleter(retries=0), ["g%d.mvsv" % i for i in range(6)],
+            batch_size=3)
+        check("单批失败不影响后续批次",
+              len(result["failed_batches"]) == 1
+              and result["failed_batches"][0]["batch"] == 1
+              and len(result["commits"]) == 1
+              and sorted(Handler.files) == ["g0.mvsv", "g1.mvsv", "g2.mvsv"],
+              (result["failed_batches"], len(result["commits"]),
+               sorted(Handler.files)))
+
+        # 3d) 全部批次都失败：逐批记录，一个也不删除
+        reset({"h%d.mvsv" % i: "s%d" % i for i in range(6)}, fail_tree_at=-1)
+        result = delete_paths_in_one_commit(
+            new_deleter(retries=0), ["h%d.mvsv" % i for i in range(6)],
+            batch_size=3)
+        check("全部批次失败：全部保留且每批都有记录",
+              len(result["failed_batches"]) == 2 and result["commits"] == []
+              and len(Handler.files) == 6, (result["failed_batches"],
+                                            sorted(Handler.files)))
+
         # 4) 非快进冲突 → 重试后成功
         reset({"a.mvsv": "s1"}, conflict_times=1)
         result = delete_paths_in_one_commit(new_deleter(), ["a.mvsv"])
@@ -681,13 +753,13 @@ def run_self_test():
               and "a.mvsv" in Handler.files
               and result["deleted"] == ["a.mvsv"], Handler.calls)
 
-        # 6) tree 被截断 → 报错（不会静默误删）
+        # 6) tree 被截断 → 该批失败（不会静默误删），不中断后续批次
         reset({"a.mvsv": "s1"}, truncate_tree=True)
-        try:
-            delete_paths_in_one_commit(new_deleter(), ["a.mvsv"])
-            check("tree 截断时报错", False)
-        except GitHubError as error:
-            check("tree 截断时报错", "truncated" in str(error), error)
+        result = delete_paths_in_one_commit(new_deleter(), ["a.mvsv"])
+        check("tree 截断时该批失败且不误删",
+              len(result["failed_batches"]) == 1
+              and "truncated" in result["failed_batches"][0]["error"]
+              and Handler.files == {"a.mvsv": "s1"}, result)
         reset({"a.mvsv": "s1"})
         result = delete_paths_in_one_commit(new_deleter(), ["a.mvsv"], verify=False)
         check("--no-verify 时不拉 tree 直接删",
@@ -824,6 +896,12 @@ def main(argv=None):
         return EXIT_FAILED
 
     print_summary(result, dry_run=args.dry_run)
+    # 部分批失败：已成功的照常落地，但本次不算全部成功（可用于重跑对照）
+    if result["failed_batches"]:
+        print("❌ 有 %d/%d 批删除失败（其余批次已成功，失败清单见上方）"
+              % (len(result["failed_batches"]),
+                 result.get("total_batches") or len(result["failed_batches"])))
+        return EXIT_FAILED
     return EXIT_OK
 
 
