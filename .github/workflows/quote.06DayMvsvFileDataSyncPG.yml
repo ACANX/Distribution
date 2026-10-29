@@ -62,7 +62,7 @@ on:
       fileLimit:
         description: "单次运行的文件数上限"
         required: false
-        default: "500"
+        default: "600"
       enableDelete:
         description: "删除开关(默认开=全部批次成功的文件同步后就删; 首次上线建议先带 false 看清单)"
         type: boolean
