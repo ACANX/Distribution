@@ -11,7 +11,8 @@ V2：候选集 = Supabase 视图 finv_quote_collect_futu_view 中 flag_enable <>
     参数 = 视图同名列（stock_id / market_type / market_code / instrument_type /
            sub_instrument_type），不再需要 idx/jsonl；
     轮换 = **时间片确定性映射**（见下），完全不依赖仓库文件、不产生状态；
-    回写 = 验证成功后直接 UPDATE finv_quote_collect_futu SET flag_enable='1'。
+    回写 = 验证成功后**两张表都**置 flag_enable='1' + dt_update：
+           finv_quote_collect_futu（视图的候选开关，写它 = 出池）与 finv_quote_secu（证券备案开关）。
 
 时间片映射（核心设计）
 --------------------------------------------------------------------------------
@@ -42,7 +43,7 @@ V2：候选集 = Supabase 视图 finv_quote_collect_futu_view 中 flag_enable <>
 
 不做的事（与 V1 的刻意差异）
 --------------------------------------------------------------------------------
-    * 不 upsert、不插新行：候选行本来就在 finv_quote_collect_futu 里，只做 UPDATE；
+    * 不 upsert、不插新行：候选行本来就在两张表里（视图就是它们的 join），只做 UPDATE；
       因此不存在 V1 的「表内缺行 → FUTU_ROW_MISSING」场景，也无需 MisMatch 记录它。
     * 不读 UscFutuMapping.jsonl(.idx)、不读 Verify/Success/。
     * 不删产物：V2 不靠删文件推进，产物纯留档。
@@ -92,8 +93,15 @@ TASK_VERSION = "1"
 #: 候选池视图（用户提供的建视图 SQL，含 finv_quote_collect_futu ⋈ finv_quote_secu，
 #: 只保留 provider='FTMM' 的证券；flag_enable 取自 finv_quote_collect_futu，即采集开关）
 VIEW_TABLE = "finv_quote_collect_futu_view"
-#: 回写目标：视图不可写，只更新底表这一列（候选行必然存在，故不插入）
+#: 回写目标（视图不可写）：验证成功后**两张表都**置 flag_enable='1'，与 V1 的同步口径一致。
+#:   finv_quote_collect_futu —— 采集配置表（视图的候选条件就取自它的 flag_enable，写它 = 出池）
+#:   finv_quote_secu         —— 证券元数据表（视图里 as enable，仅表示该证券已备案启用）
+#: 两张表主键都是 usc，候选行都必然已存在，故只 PATCH、不插入、不 upsert。
 COLLECT_TABLE = "finv_quote_collect_futu"
+SECU_TABLE = "finv_quote_secu"
+#: 回写顺序：先 secu（不参与候选筛选），后 collect（出池）。前者失败则不推进后者，
+#: 证券留在候选池里下一时间片重试；已写入的库行不回滚（幂等，重复写无害）。
+ENABLE_TABLES = (SECU_TABLE, COLLECT_TABLE)
 KEY_COLUMN = "usc"
 ENABLE_COLUMN = "flag_enable"
 ENABLE_VALUE = "1"
@@ -264,6 +272,15 @@ def nowChina():
 def nowUtcIso():
     """当前 UTC 时刻（ISO8601，秒精度）——写入 dt_update。"""
     return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+
+
+def headerOf(headers, name):
+    """响应头大小写无关查找（http.client 的 dict 保留原始大小写）。"""
+    wanted = name.lower()
+    for key, value in (headers or {}).items():
+        if key.lower() == wanted:
+            return value or ""
+    return ""
 
 
 def isEnabled(value):
@@ -564,7 +581,7 @@ class SupabaseClient:
         self.requests = 0
 
     def _request(self, method, table, query, body=None, prefer=None):
-        """发一次请求（429/5xx 与网络错误按指数退避重试），返回 (状态码, 响应文本)。"""
+        """发一次请求（429/5xx 与网络错误按指数退避重试），返回 (状态码, 响应文本, 响应头)。"""
         url = "%s/%s" % (self.restUrl, urllib.parse.quote(table, safe=""))
         if query:
             url += "?" + query
@@ -580,7 +597,9 @@ class SupabaseClient:
             self.requests += 1
             try:
                 with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                    return response.status, response.read().decode("utf-8", errors="replace")
+                    return (response.status,
+                            response.read().decode("utf-8", errors="replace"),
+                            dict(response.headers))
             except urllib.error.HTTPError as exc:
                 detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
                 last = "HTTP %s：%s" % (exc.code, detail.strip()[:300])
@@ -593,6 +612,40 @@ class SupabaseClient:
             time.sleep(RETRY_BACKOFF * (2 ** (attempt - 1)))
         raise SupabaseError(last or "未知错误")
 
+    def pendingCount(self):
+        """取候选池总行数（不拉数据）：GET …&limit=1 + Prefer: count=exact，读 Content-Range 的 /N。
+
+        返回 None 表示拿不到总数（PostgREST 版本差异 / 视图未支持精确计数），
+        调用方应回退到 pendingRows() 的全量拉取。
+        """
+        query = "select=%s&%s=neq.%s&limit=1" % (KEY_COLUMN, ENABLE_COLUMN, ENABLE_VALUE)
+        status, _body, head = self._request("GET", VIEW_TABLE, query, prefer="count=exact")
+        if status not in (200, 206):
+            raise SupabaseError("GET %s 返回 HTTP %s" % (VIEW_TABLE, status))
+        raw = headerOf(head, "Content-Range")
+        total = raw.rsplit("/", 1)[-1].strip() if "/" in raw else ""
+        return int(total) if total.isdigit() else None
+
+    def pendingPage(self, offset, size):
+        """按 usc 升序取候选池的一段（绕回由调用方处理），返回行列表。"""
+        if size <= 0:
+            return []
+        columns = ",".join(VIEW_COLUMNS)
+        query = ("select=%s&%s=neq.%s&order=%s.asc&limit=%d&offset=%d"
+                 % (columns, ENABLE_COLUMN, ENABLE_VALUE, KEY_COLUMN, size, max(0, offset)))
+        status, body, _head = self._request("GET", VIEW_TABLE, query)
+        if status != 200:
+            raise SupabaseError("GET %s 返回 HTTP %s：%s" % (VIEW_TABLE, status, body[:300]))
+        try:
+            page = json.loads(body or "[]")
+        except ValueError as exc:
+            raise SupabaseError("GET %s 响应不是合法 JSON：%s" % (VIEW_TABLE, exc)) from exc
+        if not isinstance(page, list):
+            raise SupabaseError("GET %s 响应不是行数组" % VIEW_TABLE)
+        return [row for row in page
+                if isinstance(row, dict) and cell(row.get(KEY_COLUMN))
+                and not isEnabled(row.get(ENABLE_COLUMN))]
+
     def pendingRows(self):
         """分页读候选池：视图里 flag_enable <> '1' 的行，按 usc 升序。
 
@@ -604,7 +657,7 @@ class SupabaseClient:
         while True:
             query = ("select=%s&%s=neq.%s&order=%s.asc&limit=%d&offset=%d"
                      % (columns, ENABLE_COLUMN, ENABLE_VALUE, KEY_COLUMN, PAGE_SIZE, offset))
-            status, body = self._request("GET", VIEW_TABLE, query)
+            status, body, _head = self._request("GET", VIEW_TABLE, query)
             if status != 200:
                 raise SupabaseError("GET %s 返回 HTTP %s：%s" % (VIEW_TABLE, status, body[:300]))
             try:
@@ -626,7 +679,7 @@ class SupabaseClient:
         columns = ",".join(VIEW_COLUMNS)
         keys = ",".join(urllib.parse.quote(usc, safe=".-_") for usc in uscs)
         query = "select=%s&%s=in.(%s)" % (columns, KEY_COLUMN, keys)
-        status, body = self._request("GET", VIEW_TABLE, query)
+        status, body, _head = self._request("GET", VIEW_TABLE, query)
         if status != 200:
             raise SupabaseError("GET %s 返回 HTTP %s：%s" % (VIEW_TABLE, status, body[:300]))
         try:
@@ -635,12 +688,12 @@ class SupabaseClient:
             raise SupabaseError("GET %s 响应不是合法 JSON：%s" % (VIEW_TABLE, exc)) from exc
         return [row for row in rows if isinstance(row, dict)]
 
-    def enableRows(self, uscs, stamp):
-        """把指定 usc 的 flag_enable 置 '1'（一条 PATCH 命中多行）。
+    def patchEnable(self, table, uscs, stamp):
+        """把指定表指定 usc 的 flag_enable 置 '1'（一条 PATCH 命中多行）。
 
         与 V1 的 upsert 不同：这里的每行**写入值完全相同**（都是 flag_enable='1' + 同一时间戳），
         所以一份 body 命中多行正是想要的效果，不存在「每行取值不同」的问题。
-        返回 (回读行数, 失败的 usc 列表 或 None)。
+        返回 (回读行数, 出错原因 或 None)。
         """
         if not uscs:
             return 0, None
@@ -649,12 +702,12 @@ class SupabaseClient:
         body = json.dumps({ENABLE_COLUMN: ENABLE_VALUE, DT_UPDATE_COLUMN: stamp},
                           ensure_ascii=False).encode("utf-8")
         try:
-            status, response = self._request("PATCH", COLLECT_TABLE, query, body,
-                                             prefer="return=representation")
+            status, response, _head = self._request("PATCH", table, query, body,
+                                                    prefer="return=representation")
         except SupabaseError as exc:
-            return 0, list(uscs), str(exc)
+            return 0, str(exc)
         if status not in (200, 204):
-            return 0, list(uscs), "PATCH 返回 HTTP %s：%s" % (status, response[:300])
+            return 0, "PATCH 返回 HTTP %s：%s" % (status, response[:300])
         try:
             back = json.loads(response) if response.strip() else []
         except ValueError:
@@ -824,7 +877,7 @@ def archiveMismatch(cfg, usc, row, reason, slot):
 # ---------------------------------------------------------------------------
 
 
-def stepSummary(ctx, stats):
+def stepSummary(ctx, stats, dryRun=False):
     """写 Actions 运行摘要（未在 Actions 中运行则跳过）。"""
     path = env("GITHUB_STEP_SUMMARY")
     if not path:
@@ -841,15 +894,18 @@ def stepSummary(ctx, stats):
                 else "slot=%d，每片 %d 分钟"
                      % (ctx["slot"], max(1, ctx["slotSeconds"] // 60))),
              "| 候选池 | %d 条 | %s（flag_enable<>%s） |"
-             % (ctx["poolSize"], ctx["poolDigest"], ENABLE_VALUE),
+             % (ctx["poolSize"], ctx.get("poolMode") or ctx["poolDigest"], ENABLE_VALUE),
              "| 本轮目标 | %d 条 | %s |"
              % (len(stats["results"]), ctx["targetSource"]),
              "| 成功 | %d | 落在 %s/ 并已置 flag_enable=1 |" % (counts[OUTCOME_SUCCESS], SUCCESS_DIR),
              "| 失败 | %d | 落在 %s/，下个时间片会再试 |" % (counts[OUTCOME_FAILED], FAIL_DIR),
              "| 限速未采 | %d | 未写产物 |" % counts[OUTCOME_THROTTLED],
              "| 跳过 | %d | 被 INPUT_MARKETS 过滤或视图无参数 |" % counts[OUTCOME_SKIPPED],
-             "| 配置回写 | %d 行 | %s |"
-             % (stats["enabled"], "dry-run 未写库" if ctx["dryRun"] else COLLECT_TABLE),
+             "| 配置回写 | %s | %s |"
+             % ("、".join("%s=%d 行" % (table, stats["enabledByTable"].get(table, 0))
+                          for table in ENABLE_TABLES),
+                "dry-run 未写库" if dryRun else "%s='%s'（两张表同值）"
+                % (ENABLE_COLUMN, ENABLE_VALUE)),
              "", "| USC | 结论 | 市场 | K线 | 产物路径 | 说明 |", "|---|---|---|---|---|---|"]
     for item in stats["results"]:
         lines.append("| %s | %s | %s | %d | %s | %s |"
@@ -886,16 +942,42 @@ def pickTargets(client, cfg):
         digest, size = poolDigest(rows)
         return targets, {"slot": 0, "slotStart": "-", "slotEnd": "-", "slotSeconds": 0,
                          "poolOffset": 0, "poolSize": size, "poolDigest": digest,
+                         "poolMode": "手工指定",
                          "targetSource": "手工指定 INPUT_USC → %d 条" % len(explicit)}, missing
 
-    pool = client.pendingRows()
-    digest, size = poolDigest(pool)
     slot = envInt("INPUT_SLOT", slotOf(time.time(), cfg["slotSeconds"]), minimum=0)
     start, end = slotRange(slot, cfg["slotSeconds"])
-    targets, offset, _size = pickBatch(pool, slot, cfg["batchSize"])
+    # 默认按需取行（1 次 count + 1~2 次分段）。池子有两万多行时，全量分页要 20+ 次请求
+    total = None
+    if env("INPUT_POOL_MODE", "slice").lower() != "full":
+        total = client.pendingCount()
+        if total is None:
+            print("  [告警] 拿不到候选池总行数（Content-Range 不可用），回退全量拉取", flush=True)
+    if total is None:
+        pool = client.pendingRows()
+        digest, size = poolDigest(pool)
+        targets, offset, _size = pickBatch(pool, slot, cfg["batchSize"])
+        poolMode = "全量拉取 %d 条后偏移取行" % size
+    else:
+        size = total
+        offset = (slot * cfg["batchSize"]) % size if size else 0
+        targets = client.pendingPage(offset, cfg["batchSize"]) if size else []
+        want = min(cfg["batchSize"], size)
+        if size and len(targets) < want:
+            # 绕回到池头补齐（末尾不足一片时）
+            seen = {cell(row.get(KEY_COLUMN)) for row in targets}
+            for row in client.pendingPage(0, cfg["batchSize"]):
+                if len(targets) >= want:
+                    break
+                key = cell(row.get(KEY_COLUMN))
+                if key not in seen:
+                    targets.append(row)
+                    seen.add(key)
+        digest = "按需取行"
+        poolMode = "count=exact + 分段取 %d 行" % len(targets)
     ctx = {"slot": slot, "slotStart": start, "slotEnd": end, "slotSeconds": cfg["slotSeconds"],
            "poolOffset": offset, "poolSize": size, "poolDigest": digest,
-           "targetSource": "时间片候选池"}
+           "poolMode": poolMode, "targetSource": "时间片候选池"}
     return targets, ctx, []
 
 
@@ -940,7 +1022,8 @@ def main():
     print("仓库令牌   %s" % ("已提供" if cfg["repo"].usable else "缺失（dry-run 可忽略）"), flush=True)
     print("=" * 78, flush=True)
 
-    stats = {"results": [], "mismatches": [], "enabled": 0, "failures": []}
+    stats = {"results": [], "mismatches": [], "enabled": 0, "enabledByTable": {},
+             "failures": []}
     targets, ctx, earlyMissing = pickTargets(client, cfg)
     for usc, reason in earlyMissing:
         print("  [告警] %s：%s" % (usc, reason), flush=True)
@@ -950,7 +1033,7 @@ def main():
 
     print("时间片     第 %s 片（%s ~ %s UTC+8）" % (ctx["slot"], ctx["slotStart"], ctx["slotEnd"]),
           flush=True)
-    print("候选池     %d 条，摘要 %s" % (ctx["poolSize"], ctx["poolDigest"]), flush=True)
+    print("候选池     %d 条（%s）" % (ctx["poolSize"], ctx.get("poolMode", "-")), flush=True)
     if ctx["poolSize"]:
         print("偏移映射   池内偏移 %d/%d（slot × 每片条数 mod 池大小）→ 本轮 %d 条"
               % (ctx["poolOffset"], ctx["poolSize"], len(targets)), flush=True)
@@ -959,7 +1042,7 @@ def main():
           flush=True)
     if not targets:
         print("候选池为空（全部证券的 flag_enable 都已是 1），本轮结束。", flush=True)
-        stepSummary(ctx, stats)
+        stepSummary(ctx, stats, cfg["dryRun"])
         return 0
     print("-" * 78, flush=True)
 
@@ -995,25 +1078,30 @@ def main():
             annotate("产物提交失败，请检查令牌与分支", "error")
             stats["failures"].append(usc)
 
-    # 配置回写：只写成功的；一条 PATCH 命中多行（每行取值相同）
+    # 配置回写：**两张表都置 flag_enable='1'**（与 V1 同步口径一致）。
+    # 顺序刻意是「先 secu、后 collect_futu」：
+    #   视图的候选条件取自 collect_futu.flag_enable，写它就等于「出池」；
+    #   先写不参与筛选的 secu，它失败就不推进 collect_futu，该证券留在池里下轮重试；
+    #   已写入的那张表不回滚（重复写同一个值幂等无害）。
     stamp = nowUtcIso()
     if succeeded and not cfg["dryRun"]:
-        count, bad = client.enableRows(succeeded, stamp)
-        stats["enabled"] = count
-        if bad is None:
-            print("配置回写   %s：%d 行 → %s='%s'（dt_update=%s，请求 %d 次）"
-                  % (COLLECT_TABLE, count, ENABLE_COLUMN, ENABLE_VALUE, stamp,
-                     client.requests), flush=True)
+        for table in ENABLE_TABLES:
+            count, reason = client.patchEnable(table, succeeded, stamp)
+            if reason is not None:
+                print("  ✗ 配置回写失败 %s：%s" % (table, reason), flush=True)
+                annotate("配置文件回写失败（%s），该批证券未出池，下一时间片会重试" % table, "error")
+                stats["failures"].extend(succeeded)
+                break
+            stats["enabledByTable"][table] = count
+            print("配置回写   %s：%d 行 → %s='%s'（dt_update=%s）"
+                  % (table, count, ENABLE_COLUMN, ENABLE_VALUE, stamp), flush=True)
             if count != len(succeeded):
-                annotate("配置回写命中 %d 行，少于本轮成功的 %d 条（有 usc 不在表里？）"
-                         % (count, len(succeeded)))
-        else:
-            badKeys, reason = bad
-            print("  ✗ 配置回写失败：%s" % reason, flush=True)
-            stats["failures"].extend(badKeys)
+                annotate("%s 命中 %d 行，少于本轮成功的 %d 条（该 usc 是否不在这张表里？）"
+                         % (table, count, len(succeeded)))
+        stats["enabled"] = stats["enabledByTable"].get(COLLECT_TABLE, 0)
+        print("           两张表累计请求 %d 次" % client.requests, flush=True)
     elif succeeded:
-        stats["enabled"] = 0
-        print("配置回写   dry-run：本应更新 %d 行（%s）"
+        print("配置回写   dry-run：本应更新两张表各 %d 行（%s）"
               % (len(succeeded), "、".join(succeeded)), flush=True)
 
     failed = [r for r in stats["results"] if r["outcome"] == OUTCOME_FAILED]
@@ -1024,12 +1112,15 @@ def main():
         if item["remotePath"]:
             print("  %s → %s" % (item["usc"], item["remotePath"]), flush=True)
     print("本轮结束   目标 %d，成功 %d，失败 %d，限速未采 %d，跳过 %d，"
-          "配置回写 %d 行，留痕 %d 条，累计请求 %d 次（限速 %d 次）"
+          "配置回写 %d 条（%s），留痕 %d 条，累计请求 %d 次（限速 %d 次）"
           % (len(stats["results"]), len(stats["results"]) - len(failed) - len(throttled)
              - len(skipped), len(failed), len(throttled), len(skipped),
-             stats["enabled"], len(stats["mismatches"]),
+             stats["enabled"],
+             "、".join("%s:%d 行" % (table, stats["enabledByTable"].get(table, 0))
+                       for table in ENABLE_TABLES),
+             len(stats["mismatches"]),
              quoteClient.requests + client.requests, quoteClient.throttles), flush=True)
-    stepSummary(ctx, stats)
+    stepSummary(ctx, stats, cfg["dryRun"])
 
     if failed:
         annotate("有 %d 条证券验证失败，失败原因见 %s/ 下的产物头部" % (len(failed), FAIL_DIR))
