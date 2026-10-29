@@ -110,7 +110,7 @@ DEFAULT_MAX_DELETE = 1000                 # 单次运行删除路径数上限
 DEFAULT_TIMEOUT = 30
 DEFAULT_RETRIES = 3                       # 非快进冲突重试次数
 RETRY_BACKOFF_SECONDS = 2.0
-SAMPLE_LIMIT = 20                         # 日志中路径清单的展示条数
+SAMPLE_LIMIT = None                       # 日志中路径清单的展示条数；None = 完整输出（删除清单必须可逐条对账）
 
 EXIT_OK = 0
 EXIT_FAILED = 1
@@ -153,13 +153,18 @@ def chunks(source, size):
 
 
 def log_path_list(title, paths, limit=SAMPLE_LIMIT):
-    """打印路径清单（超过 limit 只给总数与首几项）"""
+    """打印路径清单
+
+    默认（limit=None）**完整逐条输出**：删除清单必须能与远端剩余文件逐条对账，
+    不允许「其余 N 个同上」这类省略。传入正整数时才截断展示。
+    """
     if not paths:
         return
     print("%s（%d 个）：" % (title, len(paths)))
-    for path in paths[:limit]:
+    shown = paths if limit is None else paths[:limit]
+    for path in shown:
         print("    - %s" % path)
-    if len(paths) > limit:
+    if limit is not None and len(paths) > limit:
         print("    - ……其余 %d 个同上" % (len(paths) - limit))
 
 
