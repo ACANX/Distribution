@@ -17,12 +17,14 @@ V2：候选集 = Supabase 视图 finv_quote_collect_futu_view 中 flag_enable <>
 时间片映射（核心设计）
 --------------------------------------------------------------------------------
     slot       = floor(now_epoch / INPUT_SLOT_SECONDS)     默认 300 秒 = 5 分钟
-    offset     = (slot × INPUT_BATCH_SIZE) mod N            N = 候选池行数，默认每片 3 条
+    offset     = (slot × INPUT_BATCH_SIZE − 已出池数) mod N   N = 待启用行数，默认每片 3 条
     targets    = 候选池（按 usc 升序）从 offset 起循环取 3 条
 
-为什么不用「先分批、再取 slot % 批数」：N 不整除 batchSize 时，下一次会从池头重开，
-相邻两片必然重叠（N=10、batch=3 时第 4 片取 [9,0,1]、第 5 片又取 [0,1,2]）。按偏移步进
-则相邻两片恒不重叠（步长 3 < N），且长期遍历整池。
+“已出池数” = 视图总数 − 待启用行数，即已被本流程置 1、从池中移除的行数。必须扣掉它：
+    成功一轮 → 指针 +3、池子 −3 → 偏移不变，正好指向剩余池的同一相对位置；
+    失败一轮 → 指针 +3、池子不动 → 偏移 +3，下一轮换下一批。
+只用 slot 算的话，池子随成功变小后偏移会大幅跳变，反复撞回同一批失败行
+（实测 3000 条池子跑 2 万轮都轮不完 1000 条有效证券）。
 
 为什么这样比 V1 的队列稳：
     * 无状态：不需要进度文件、不需要删产物、不依赖 git 树内容；
@@ -612,13 +614,17 @@ class SupabaseClient:
             time.sleep(RETRY_BACKOFF * (2 ** (attempt - 1)))
         raise SupabaseError(last or "未知错误")
 
-    def pendingCount(self):
-        """取候选池总行数（不拉数据）：GET …&limit=1 + Prefer: count=exact，读 Content-Range 的 /N。
+    def countRows(self, onlyPending=False):
+        """数行（不拉数据）：GET …&limit=1 + Prefer: count=exact，读 Content-Range 的 /N。
 
+        :param onlyPending: True 只数 flag_enable<>'1' 的待启用行（N）；
+                            False 数视图全量（T，用于算出「已出池多少条」）。
         返回 None 表示拿不到总数（PostgREST 版本差异 / 视图未支持精确计数），
         调用方应回退到 pendingRows() 的全量拉取。
         """
-        query = "select=%s&%s=neq.%s&limit=1" % (KEY_COLUMN, ENABLE_COLUMN, ENABLE_VALUE)
+        query = "select=%s&limit=1" % KEY_COLUMN
+        if onlyPending:
+            query += "&%s=neq.%s" % (ENABLE_COLUMN, ENABLE_VALUE)
         status, _body, head = self._request("GET", VIEW_TABLE, query, prefer="count=exact")
         if status not in (200, 206):
             raise SupabaseError("GET %s 返回 HTTP %s" % (VIEW_TABLE, status))
@@ -766,6 +772,26 @@ def slotRange(slot, slotSeconds):
     start = datetime.datetime.fromtimestamp(slot * slotSeconds, CHINA_TZ)
     end = start + datetime.timedelta(seconds=slotSeconds)
     return start.strftime("%Y-%m-%d %H:%M"), end.strftime("%H:%M")
+
+
+def poolOffset(slot, batchSize, pending, total):
+    """池内偏移 = (扫描指针 − 已出池数量) mod 待启用数。
+
+    这是整个轮换机制的核心，两个量都必须参与：
+        扫描指针 = slot × batchSize        每轮固定前进 batchSize
+        已出池数 = total − pending         已被本流程置 1、从池里移除的行数
+
+    为什么不能只用 slot：成功行会从池中消失，池子变小后 slot×batchSize mod N 会
+    大幅跳变，反复撞到同一批失败行（实测 3000 条池子跑 2 万轮都轮不完 1000 条有效证券）。
+    扣掉已出池数量后：
+        成功一轮 → 指针 +3、池子 −3 → 偏移不变，正好指向剩余池的同一相对位置；
+        失败一轮 → 指针 +3、池子不动 → 偏移 +3，下一轮换下一批。
+    于是扫描严格单调向前，每条待启用行只被真正扫到一次。
+    """
+    if pending <= 0:
+        return 0
+    enabled = max(0, (total or 0) - pending)
+    return (slot * batchSize - enabled) % pending
 
 
 def pickBatch(pool, slot, batchSize):
@@ -947,20 +973,22 @@ def pickTargets(client, cfg):
 
     slot = envInt("INPUT_SLOT", slotOf(time.time(), cfg["slotSeconds"]), minimum=0)
     start, end = slotRange(slot, cfg["slotSeconds"])
-    # 默认按需取行（1 次 count + 1~2 次分段）。池子有两万多行时，全量分页要 20+ 次请求
-    total = None
+    # 默认按需取行（2 次 count + 1~2 次分段）。池子有两万多行时，全量分页要 20+ 次请求
+    total, pending = None, None
     if env("INPUT_POOL_MODE", "slice").lower() != "full":
-        total = client.pendingCount()
-        if total is None:
-            print("  [告警] 拿不到候选池总行数（Content-Range 不可用），回退全量拉取", flush=True)
-    if total is None:
+        total = client.countRows()
+        pending = client.countRows(onlyPending=True)
+        if total is None or pending is None:
+            print("  [告警] 拿不到候选池计数（Content-Range 不可用），回退全量拉取", flush=True)
+            total, pending = None, None
+    if pending is None:
         pool = client.pendingRows()
         digest, size = poolDigest(pool)
         targets, offset, _size = pickBatch(pool, slot, cfg["batchSize"])
         poolMode = "全量拉取 %d 条后偏移取行" % size
     else:
-        size = total
-        offset = (slot * cfg["batchSize"]) % size if size else 0
+        size = pending
+        offset = poolOffset(slot, cfg["batchSize"], pending, total)
         targets = client.pendingPage(offset, cfg["batchSize"]) if size else []
         want = min(cfg["batchSize"], size)
         if size and len(targets) < want:
@@ -976,8 +1004,9 @@ def pickTargets(client, cfg):
         digest = "按需取行"
         poolMode = "count=exact + 分段取 %d 行" % len(targets)
     ctx = {"slot": slot, "slotStart": start, "slotEnd": end, "slotSeconds": cfg["slotSeconds"],
-           "poolOffset": offset, "poolSize": size, "poolDigest": digest,
-           "poolMode": poolMode, "targetSource": "时间片候选池"}
+           "poolOffset": offset, "poolSize": size, "poolTotal": total or size,
+           "poolEnabled": max(0, (total or size) - size),
+           "poolDigest": digest, "poolMode": poolMode, "targetSource": "时间片候选池"}
     return targets, ctx, []
 
 
@@ -1033,10 +1062,13 @@ def main():
 
     print("时间片     第 %s 片（%s ~ %s UTC+8）" % (ctx["slot"], ctx["slotStart"], ctx["slotEnd"]),
           flush=True)
-    print("候选池     %d 条（%s）" % (ctx["poolSize"], ctx.get("poolMode", "-")), flush=True)
+    print("候选池     待启用 %d 条 / 视图总数 %d 条（已出池 %d）—— %s"
+          % (ctx["poolSize"], ctx["poolTotal"], ctx["poolEnabled"],
+             ctx.get("poolMode", "-")), flush=True)
     if ctx["poolSize"]:
-        print("偏移映射   池内偏移 %d/%d（slot × 每片条数 mod 池大小）→ 本轮 %d 条"
-              % (ctx["poolOffset"], ctx["poolSize"], len(targets)), flush=True)
+        print("偏移映射   池内偏移 %d/%d（扫描指针 %d − 已出池 %d）→ 本轮 %d 条"
+              % (ctx["poolOffset"], ctx["poolSize"], ctx["slot"] * cfg["batchSize"],
+                 ctx["poolEnabled"], len(targets)), flush=True)
     print("本轮目标   %d 条：%s" % (len(targets),
                                    "、".join(cell(row.get(KEY_COLUMN)) for row in targets) or "（空）"),
           flush=True)
