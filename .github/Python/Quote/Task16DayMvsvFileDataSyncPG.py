@@ -47,7 +47,8 @@ cdeu.finv_quote_secu_kline_min，作为 Supabase 入库数据的镜像副本。
       修改任一侧的目录 / 列映射时请同步另一侧；
     - 日志分块：每个文件执行前后各打印一行 `===== [i/N] 开始/结束：... =====`
       （块头带序号与路径，块尾带序号、结果与耗时），长日志里可直接看出每个文件
-      的批次循环边界，不会与相邻文件的 ✅ / ❌ / ⚠️ 混在一起；
+      的批次循环边界，不会与相邻文件的 ✅ / ❌ / ⚠️ 混在一起；块内各行
+      （📄 解析 / 各批次 / 汇总）**不再重复打印长路径**，靠块头块尾定位；
     - 源文件删除：**默认开启**；单个文件全部批次成功后删除 quote 分支上的该源文件
       （需 GIT_COMMIT_TOKEN，缺失即退出 1）。删除相关清单（待删除 / 删除成功 /
       远端已不存在 / 删除失败）一律**完整逐条打印，不折叠成「其余 N 个同上」**，
@@ -1256,7 +1257,7 @@ def delete_files_in_one_commit(api_base, owner, repo, branch, paths, token,
 # 单文件同步
 # ---------------------------------------------------------------------------
 
-def sync_file(client, root, rel_path, batch_size, column_types):
+def sync_file(client, root, rel_path, batch_size, column_types, show_path=True):
     """把一份行情文件的全部记录分批同步到目标服务，逐批记录明细
 
     单批失败不中断后续批次——跑完才能给出完整失败清单；Upsert 幂等，重跑无副作用。
@@ -1266,6 +1267,9 @@ def sync_file(client, root, rel_path, batch_size, column_types):
     :param rel_path: 文件相对路径（quote 分支内）
     :param batch_size: 单批行数
     :param column_types: 文件头列名 → (wire 键, 类型) 映射
+    :param show_path: 是否在日志行里带文件路径。批量主流程由
+                      `===== [i/N] 开始/结束 =====` 块头块尾标注当前文件，
+                      故传 False 避免每行重复长路径；单文件调用保持默认 True。
     :return: 文件级汇总 dict：
              {"rel_path", "parsed", "dropped_rows", "dropped_fields", "batches",
               "status", "failure_digest"}，status 取 ok / partial / failed
@@ -1289,9 +1293,10 @@ def sync_file(client, root, rel_path, batch_size, column_types):
         items.append(item)
 
     dropped_rows = len(bad_rows) + len(dropped_records)
-    print("📄 %s：解析 %d 行，脏行 %d 行，可同步 %d 行，整行丢弃 %d 行（含脏行），"
+    print("📄 %s解析 %d 行，脏行 %d 行，可同步 %d 行，整行丢弃 %d 行（含脏行），"
           "字段丢弃 %d 行"
-          % (rel_path, len(rows) + len(bad_rows), len(bad_rows), len(items),
+          % ("%s：" % rel_path if show_path else "",
+             len(rows) + len(bad_rows), len(bad_rows), len(items),
              dropped_rows, len(dropped_fields)))
     log_samples("脏行", bad_rows)
     log_samples("整行丢弃", dropped_records, unit="条记录")
@@ -1304,7 +1309,7 @@ def sync_file(client, root, rel_path, batch_size, column_types):
     for batch_no, chunk in enumerate(chunks(items, batch_size), 1):
         batches.append(upsert_batch(client, batch_no, chunk))
     return summarize_file(rel_path, len(rows) + len(bad_rows), dropped_rows,
-                          len(dropped_fields), batches)
+                          len(dropped_fields), batches, show_path=show_path)
 
 
 def log_samples(title, entries, unit="行"):
@@ -1356,7 +1361,8 @@ def describe_batch(outcome):
                outcome["requests"], suffix))
 
 
-def summarize_file(rel_path, parsed, dropped_rows, dropped_fields, batches):
+def summarize_file(rel_path, parsed, dropped_rows, dropped_fields, batches,
+                   show_path=True):
     """生成文件级汇总与状态（ok / partial / failed）
 
     - failed：任一批次失败（网络/服务端/affected 不符）；
@@ -1388,9 +1394,9 @@ def summarize_file(rel_path, parsed, dropped_rows, dropped_fields, batches):
     digest = "；".join(digest_parts)
 
     icon = {"ok": "✅", "partial": "⚠️", "failed": "❌"}[status]
-    print("%s %s 汇总：解析 %d 行，提交 %d 行，affected %s，批次 %d（失败 %d）→ %s%s"
-          % (icon, rel_path, parsed, submitted, affected_text, len(batches),
-             len(failed_batches), status.upper(),
+    print("%s %s汇总：解析 %d 行，提交 %d 行，affected %s，批次 %d（失败 %d）→ %s%s"
+          % (icon, "%s " % rel_path if show_path else "", parsed, submitted,
+             affected_text, len(batches), len(failed_batches), status.upper(),
              "（完整同步）" if status == "ok" else "（详见上方 ⚠️ / ❌ 日志）"))
     return {
         "rel_path": rel_path,
@@ -1503,28 +1509,29 @@ def main():
     ok_files, partial_paths = [], []
     total_picked = len(picked)
     # 每个文件一个显式块：块头给序号 + 路径，块尾给序号 + 状态 + 耗时。
-    # 这样在长日志里能一眼看出「哪几行属于同一个文件」「循环从哪开始、到哪结束」，
-    # 尤其多个 ❌ / ⚠️ 混排时不会串到相邻文件上（用 ===== 与上方「本次处理清单」区分）。
+    # 块内的日志行不再重复长路径，只以块头块尾定位当前文件；单文件独立调用
+    # sync_file() 时仍会带路径（show_path 默认 True）。
     for idx, (rel_path, _date, _code) in enumerate(picked, 1):
         print("===== [%d/%d] 开始：%s ====="
               % (idx, total_picked, rel_path))
         started = time_module.monotonic()
         try:
-            outcome = sync_file(client, root, rel_path, batch_size, column_types)
+            outcome = sync_file(client, root, rel_path, batch_size, column_types,
+                                show_path=False)
         except Exception as e:
             # 文件头不可解析 / 无可下发数据：没发过写请求，源文件必须保留
-            print("❌ 文件 %s 解析/同步过程异常：%s" % (rel_path, e))
+            print("❌ 解析/同步过程异常：%s" % e)
             failed_files.append("%s：%s" % (rel_path, e))
             mark = "异常（源文件保留）"
         else:
             if outcome["status"] == "failed":
-                print("🔒 %s 同步失败（批次未全部成功）：%s"
-                      % (rel_path, outcome["failure_digest"]))
+                print("🔒 同步失败（批次未全部成功）：%s"
+                      % outcome["failure_digest"])
                 failed_files.append("%s：%s" % (rel_path, outcome["failure_digest"]))
                 mark = "失败（源文件保留）"
             elif outcome["status"] == "partial":
-                print("⚠️ %s 部分同步（有行/字段被丢弃）：%s"
-                      % (rel_path, outcome["failure_digest"]))
+                print("⚠️ 部分同步（有行/字段被丢弃）：%s"
+                      % outcome["failure_digest"])
                 partial_files.append("%s：%s" % (rel_path, outcome["failure_digest"]))
                 partial_paths.append(rel_path)
                 mark = "部分同步（存在被丢弃的行/字段）"

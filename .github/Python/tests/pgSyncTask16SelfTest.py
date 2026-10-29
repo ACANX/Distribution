@@ -391,6 +391,23 @@ def test_sync_file(server, tmp):
     except ValueError as e:
         check("全部行不可用时抛错", "无可下发数据" in str(e), e)
 
+    # 日志格式：批量主流程用 `===== [i/N] 开始/结束 =====` 块头块尾标注当前文件，
+    # 块内行（📄 解析 / 各批次 / 汇总）不再重复长路径；单独调用时仍带路径。
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(mvsv_header(LONG_NAMES.split("|")))
+        for i in range(2):
+            f.write(data_line(17610000000000 + i) + "\n")
+    for show_path in (False, True):
+        server.reset()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            PG.sync_file(client, tmp, FILE_REL, 2, column_types,
+                         show_path=show_path)
+        out = buf.getvalue()
+        check("show_path=%s：日志%s带文件路径"
+              % (show_path, "应" if show_path else "不应"),
+              (FILE_REL in out) == show_path, out[:200])
+
 
 class FakeGitHub:
     """假 GitHub：同时支持 Contents API（兜底）与 Git Data API（批量）
@@ -641,7 +658,8 @@ def test_main_delete(server, gh):
 
     def run(status_map, enable_delete=True, allow_partial=False, token="token",
             bulk=True, bulk_status=200, delete_status=200, conflict_times=0):
-        def fake_sync(client, root, rel_path, batch_size, column_types):
+        def fake_sync(client, root, rel_path, batch_size, column_types,
+                     show_path=True):
             return {"rel_path": rel_path, "status": status_map[rel_path],
                     "failure_digest": "d"}
 
@@ -674,6 +692,10 @@ def test_main_delete(server, gh):
         check("开关关闭：不删且退出 0",
               code == 0 and left == {ok_path} and "删除开关关闭" in out,
               (code, left))
+        check("输出每个文件一个 [i/N] 开始/结束块",
+              "===== [1/1] 开始：%s =====" % ok_path in out
+              and "===== [1/1] 结束：成功（完整同步），耗时" in out,
+              out[:300])
 
         code, out, left = run({ok_path: "ok"})
         check("默认优先批量删除（Git Data API），不调 Contents DELETE",
