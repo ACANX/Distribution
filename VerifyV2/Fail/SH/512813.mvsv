@@ -4,7 +4,7 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 0
-# 采集时间 : "2026-10-30 03:42:18"
+# 采集时间 : "2026-10-30 03:43:49"
 # 证券代码 : 512813
 # 市场 : SH
 # 备注 : "汇总: 验证失败|K线=0|错误代码=EMPTY"
@@ -14,7 +14,7 @@
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 0
-# FetchTime : "2026-10-30 03:42:18"
+# FetchTime : "2026-10-30 03:43:49"
 # SecuCode : 512813
 # Market : SH
 # 以下为本程序追加的元信息（读取方可忽略）
@@ -36,5 +36,5 @@
 # 时间片 : 5977676
 # 任务脚本 : VerifyQuoteMinuteV2.py
 # 任务版本 : 1
-# 采集时刻 : 2026-10-30 03:42:18
+# 采集时刻 : 2026-10-30 03:43:49
 # 处置提示 : 本件为失败留痕；该证券的 flag_enable 未被置 1，后续时间片会自动重试
