@@ -1,0 +1,151 @@
+name: VerifyQuoteMinuteV2
+
+# =============================================================================
+# V2 与 V1（VerifyQuoteMinute + VerifyQuoteMinuteSyncConfig）并行存在，互不影响：
+#   V1 候选来源 = Verify/Success/ 清单（靠删文件让队列前移）
+#   V2 候选来源 = Supabase 视图 finv_quote_collect_futu_view 里 flag_enable<>'1' 的行，
+#                 按【时间片】确定性映射每轮取 3 条，验证成功即把 flag_enable 置 '1'
+#
+# 触发方式
+#   1) schedule —— 每 5 分钟一片（GitHub cron 最小粒度，会出现数分钟延迟，
+#      个别时间片可能被跳过；需要严格节拍时改用外部调度器按需 dispatch 并传 slot）
+#   2) workflow_dispatch —— 手工指定 usc 做验证，或传 slot 重放某一时间片
+#
+# ⚠️ schedule 只在【默认分支】上的工作流文件生效。本仓库默认分支是 dev，
+#    若本文件只在 quote-meta 上，cron 不会触发（V1 曾因此每天空跑失败）。
+#    让 cron 生效的做法：把本文件也放到 dev（可命名为 quote-meta.VerifyQuoteMinuteV2.yml）。
+#    下面的 checkout 显式回落到 quote-meta，保证无论从哪个分支触发都拿到正确的脚本。
+# =============================================================================
+
+on:
+  workflow_dispatch:
+    inputs:
+      usc:
+        description: '手工指定待验证 usc（逗号/空白分隔）；留空 = 走时间片候选池'
+        required: false
+        default: ''
+        type: string
+      slot:
+        description: '手工指定时间片序号（留空 = 按当前时间算），用于重放某一批'
+        required: false
+        default: ''
+        type: string
+      slot_seconds:
+        description: '时间片长度（秒），默认 300 = 5 分钟'
+        required: false
+        default: '300'
+        type: string
+      batch_size:
+        description: '每个时间片验证几个证券，默认 3'
+        required: false
+        default: '3'
+        type: string
+      branch:
+        description: '产物提交目标分支'
+        required: false
+        default: 'quote-meta'
+        type: string
+      checkout_ref:
+        description: '检出哪个分支上的任务脚本；默认 quote-meta（不是本次 dispatch 的 ref）'
+        required: false
+        default: 'quote-meta'
+        type: string
+      markets:
+        description: '只处理这些行情市场段（逗号分隔，留空不限）'
+        required: false
+        default: ''
+        type: string
+      interval:
+        description: '相邻两次请求的最小间隔秒数'
+        required: false
+        default: '10'
+        type: string
+      price_field:
+        description: '收盘价取用口径：auto / cc_price / price'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - cc_price
+          - price
+      dry_run:
+        description: '只本地生成 .mvsv，不写库、不提交'
+        required: false
+        default: false
+        type: boolean
+      allow_verify_failure:
+        description: '验证失败也判定为执行成功（定时轮询默认放宽，避免每轮都标红）'
+        required: false
+        default: true
+        type: boolean
+  schedule:
+    # 每 5 分钟一片；cron 为 UTC，V2 的时间片用 epoch 计算，与时区无关
+    - cron: '*/5 * * * *'
+
+run-name: VerifyQuoteMinuteV2 ${{ inputs.usc || '(时间片候选池)' }}
+
+permissions:
+  contents: write
+
+# 同一时刻只跑一个 V2 采集任务：时间片是确定性的，并发只会重复验证同一批
+concurrency:
+  group: verify-quote-minute-v2
+  cancel-in-progress: false
+
+jobs:
+  verify-v2:
+    name: 按时间片验证并回写配置
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 检出任务脚本
+        uses: actions/checkout@v4
+        with:
+          # 显式回落 quote-meta：V2 脚本只在产物分支上，用 github.ref 会在 dev 上找不到文件
+          ref: ${{ inputs.checkout_ref || 'quote-meta' }}
+
+      - name: 准备 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 采集并回写配置（V2）
+        env:
+          # 提交令牌：优先仓库密钥，未配置时用 Actions 内置令牌（需上面的 contents: write）
+          GITHUB_COMMIT_TOKEN: ${{ secrets.GITHUB_COMMIT_TOKEN || github.token }}
+          # 必填：Supabase 凭据（读视图候选池 + 回写 flag_enable）。缺失时脚本以退出码 2 收工
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          # 目标与轮换参数
+          INPUT_USC: ${{ inputs.usc }}
+          INPUT_SLOT: ${{ inputs.slot }}
+          INPUT_SLOT_SECONDS: ${{ inputs.slot_seconds }}
+          INPUT_BATCH_SIZE: ${{ inputs.batch_size }}
+          INPUT_BRANCH: ${{ inputs.branch }}
+          INPUT_OUT_DIR: verify-v2-out
+          INPUT_MARKETS: ${{ inputs.markets }}
+          INPUT_INTERVAL: ${{ inputs.interval }}
+          INPUT_PRICE_FIELD: ${{ inputs.price_field }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_ALLOW_VERIFY_FAILURE: ${{ inputs.allow_verify_failure }}
+          PYTHONIOENCODING: utf-8
+        run: |
+          set -o pipefail
+          code=0
+          python3 .github/Python/VerifyQuoteMinuteV2.py || code=$?
+          if [ "$code" -eq 0 ]; then
+            echo "✅ V2 本轮结束（成功证券的 flag_enable 已置 1，产物落在 VerifyV2/）"
+          else
+            echo "::error::V2 执行失败，退出码 $code（2=任务级错误：凭据缺失/视图或表不可用/产物提交或配置回写失败；1=有证券验证失败且未放宽）"
+          fi
+          exit "$code"
+
+      - name: 留档本次生成本地副本
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-v2-out
+          path: verify-v2-out/
+          if-no-files-found: warn
+          retention-days: 14
