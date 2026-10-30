@@ -83,9 +83,9 @@ BJT = timezone(timedelta(hours=8))
 # ── 提交目标(同分支) ──────────────────────────────────────────────────────────
 # 显式写死仓库身份, 不走 Commit.json / .git/config 推断, 避免检出方式变化时提交到别处;
 # 可用环境变量覆盖, 便于在别的 fork 上测试。改动须与工作流 env 中的同名变量保持一致。
-TARGET_OWNER = os.environ.get("GOLD_ARCHIVE_OWNER", "ACANX")
-TARGET_REPO = os.environ.get("GOLD_ARCHIVE_REPO", "Distribution")
-TARGET_BRANCH = os.environ.get("GOLD_ARCHIVE_BRANCH", "quote-gold")
+TARGET_OWNER = os.environ.get("GOLD_ARCHIVE_OWNER", "acdnx")
+TARGET_REPO = os.environ.get("GOLD_ARCHIVE_REPO", "Dist")
+TARGET_BRANCH = os.environ.get("GOLD_ARCHIVE_BRANCH", "collect-quote-gold")
 
 # 令牌环境变量(与 GitHubCommitContent.ENV_TOKEN 一致)
 TOKEN_ENV = "GIT_COMMIT_TOKEN"
