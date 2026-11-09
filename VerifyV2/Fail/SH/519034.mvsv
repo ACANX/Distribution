@@ -4,7 +4,7 @@
 # 字段名称 : "时间戳(UTC)|日期|时间|开盘价|收盘价|最低价|最高价|成交量|成交额|涨跌值|涨跌幅(%)"
 # 字段类型 : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # 计数 : 0
-# 采集时间 : "2026-10-30 05:02:16"
+# 采集时间 : "2026-11-09 18:18:36"
 # 证券代码 : 519034
 # 市场 : SH
 # 备注 : "汇总: 验证失败|K线=0|错误代码=EMPTY"
@@ -14,7 +14,7 @@
 # FieldName : "Ts|Date|Time|Open|Close|Low|High|Volume|Turnover|ChangePrice|ChangePercent"
 # FieldType : "int|int|int|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|Decimal|str"
 # Count : 0
-# FetchTime : "2026-10-30 05:02:16"
+# FetchTime : "2026-11-09 18:18:36"
 # SecuCode : 519034
 # Market : SH
 # 以下为本程序追加的元信息（读取方可忽略）
@@ -32,8 +32,8 @@
 # 请求参数 : "stockId=1519034|marketType=4|type=2|marketCode=30|instrumentType=4|subInstrumentType=4001"
 # 请求地址 : https://www.moomoo.com/quote-api/quote-v2/get-quote-minute
 # 数据来源 : finv_quote_collect_futu_view @ Supabase（flag_enable<>1 的待启用行）
-# 时间片 : 5977692
+# 时间片 : 5980731
 # 任务脚本 : VerifyQuoteMinuteV2.py
 # 任务版本 : 1
-# 采集时刻 : 2026-10-30 05:02:16
+# 采集时刻 : 2026-11-09 18:18:36
 # 处置提示 : 本件为失败留痕；该证券的 flag_enable 未被置 1，后续时间片会自动重试
